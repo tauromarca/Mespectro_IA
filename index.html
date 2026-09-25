@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Espectros</title>
+    <!-- Cargamos Chart.js para reemplazar Matplotlib -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { text-align: center; color: #2c3e50; }
+        .control-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            background: #eef2f7;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .btn-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-weight: bold; font-size: 0.9em; margin-bottom: 2px; }
+        input[type="file"] { font-size: 0.85em; }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #2980b9; }
+        button.orange { background-color: #e67e22; }
+        button.orange:hover { background-color: #d35400; }
+        
+        /* Simulación de la barra de progreso de Tkinter */
+        .progress-container {
+            margin: 15px 0;
+            display: none;
+        }
+        progress { width: 100%; height: 20px; }
+        #status-text { text-align: center; font-weight: bold; color: #e67e22; }
+
+        .chart-container {
+            position: relative;
+            margin: auto;
+            height: 40vh;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Analizador de Espectros</h1>
+
+    <!-- Panel de Controles (Reemplazo de los botones de Tkinter) -->
+    <div class="control-panel">
+        <div class="btn-group">
+            <label>1. Cargar Blanco:</label>
+            <input type="file" id="file-blanco" accept=".csv">
+        </div>
+        <div class="btn-group">
+            <label>2. Cargar Negro:</label>
+            <input type="file" id="file-negro" accept=".csv">
+        </div>
+        <div class="btn-group">
+            <label>3. Cargar Muestra:</label>
+            <input type="file" id="file-muestra" accept=".csv">
+        </div>
+        <div class="btn-group" style="justify-content: flex-end;">
+            <!-- Conexión Hardware vía Web Serial -->
+            <button id="btn-conectar" style="background-color: #2ecc71;">Conectar Hardware</button>
+            <button id="btn-enviar" class="orange">Enviar Datos</button>
+        </div>
+    </div>
+
+    <!-- Barra de progreso -->
+    <div class="progress-container" id="progreso-bloque">
+        <div id="status-text">GRABANDO...</div>
+        <progress id="progreso-barra" value="0" max="100"></progress>
+    </div>
+
+    <!-- Contenedor del Gráfico (Matplotlib Canvas) -->
+    <div class="chart-container">
+        <canvas id="espectroChart"></canvas>
+    </div>
+</div>
+
+<!-- Cargamos la lógica de la aplicación -->
+<script src="app.js"></script>
+</body>
+</html>
