@@ -1,5 +1,5 @@
 // ==========================================
-// 1. GENERACIÓN DE LONGITUDES DE ONDA (ENTEROS)
+// 1. GENERACIÓN DE LONGITUDES DE ONDA (ENTEROS) Y COLORES
 // ==========================================
 const A_0 = 2.991638797E+02, B_1 = 2.694248478E+00, B_2 = -8.556340170E-04;
 const B_3 = -9.851009025E-06, B_4 = 1.633909302E-08, B_5 = -3.346647530E-12;
@@ -7,27 +7,34 @@ const B_3 = -9.851009025E-06, B_4 = 1.633909302E-08, B_5 = -3.346647530E-12;
 let nm = [];
 let bgColors = [];
 
-function nmToRGB(wavelength) {
-    if (wavelength < 380) return "darkviolet";
-    if (wavelength < 410) return "blueviolet";
-    if (wavelength < 450) return "violet";
-    if (wavelength < 480) return "blue";
-    if (wavelength < 500) return "cyan";
-    if (wavelength < 550) return "green";
-    if (wavelength < 570) return "greenyellow";
-    if (wavelength < 580) return "yellow";
-    if (wavelength < 620) return "orange";
-    if (wavelength < 700) return "red";
-    if (wavelength < 760) return "darkred";
-    return "maroon";
+// Función de colores EXACTA a la lógica de Python
+function getColorParaOnda(onda) {
+    if (onda < 380) return "darkviolet";
+    if (onda >= 380 && onda < 410) return "blueviolet";
+    if (onda >= 410 && onda < 450) return "violet";
+    if (onda >= 450 && onda < 480) return "blue";
+    if (onda >= 480 && onda < 500) return "cyan";
+    if (onda >= 500 && onda < 550) return "green";
+    if (onda >= 550 && onda < 570) return "greenyellow";
+    if (onda >= 570 && onda < 580) return "yellow";
+    if (onda >= 580 && onda < 620) return "orange";
+    if (onda >= 620 && onda < 700) return "red";
+    if (onda >= 700 && onda < 720) return "darkred";
+    if (onda >= 720 && onda <= 760) return "darkred";
+    if (onda > 760) return "maroon";
+    return "black"; // Por seguridad
 }
 
+// Calculamos los 288 puntos
 for (let i = 1; i <= 288; i++) {
+    // Cálculo polinómico original
     let wave = A_0 + (B_1 * i) + (B_2 * Math.pow(i, 2)) + (B_3 * Math.pow(i, 3)) + (B_4 * Math.pow(i, 4)) + (B_5 * Math.pow(i, 5));
-    // AQUÍ CONVERTIMOS A NÚMERO ENTERO
+    
+    // LLEVADO A ENTEROS (redondeo estándar)
     let waveInt = Math.round(wave);
+    
     nm.push(waveInt); 
-    bgColors.push(nmToRGB(waveInt));
+    bgColors.push(getColorParaOnda(waveInt));
 }
 
 // ==========================================
@@ -52,7 +59,7 @@ let spectroChart = new Chart(ctx, {
         datasets: [{
             label: 'Intensidad (counts)',
             data: currentData,
-            backgroundColor: bgColors,
+            backgroundColor: bgColors, // Usa los colores calculados
             borderWidth: 1
         }]
     },
@@ -60,8 +67,15 @@ let spectroChart = new Chart(ctx, {
         responsive: true,
         animation: { duration: 0 },
         scales: {
-            x: { title: { display: true, text: 'Longitud de Onda (nm)' } },
-            y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 }
+            x: { 
+                title: { display: true, text: 'Longitud de Onda en nm' },
+                ticks: { maxRotation: 90, minRotation: 90 } // Rota los textos a 90° como en plt.xticks(rotation=90)
+            },
+            y: { 
+                title: { display: true, text: 'counts/(μW/cm2)' }, 
+                min: 0, 
+                max: 1050 
+            }
         }
     }
 });
@@ -78,21 +92,14 @@ function processCSV(file, targetType) {
         
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
-            // Ignorar encabezados o líneas vacías
             if (line === '' || isNaN(parseInt(line[0]))) continue;
             
-            // Soportar archivos separados por coma (,) o punto y coma (;)
             let parts = line.split(/[,;]/);
-            
-            // Si tiene 2 columnas (Wavelength, Intensity), toma la 2da. Si tiene 1, toma esa.
             let val = parts.length > 1 ? parseFloat(parts[1]) : parseFloat(parts[0]);
             
-            if (!isNaN(val)) {
-                dataArr.push(val);
-            }
+            if (!isNaN(val)) dataArr.push(val);
         }
         
-        // Verificamos tener al menos los 288 datos del espectrómetro
         if (dataArr.length >= 288) {
             let parsedData = dataArr.slice(0, 288);
             
@@ -101,7 +108,6 @@ function processCSV(file, targetType) {
             else if (targetType === 'sample') {
                 sampleData = parsedData;
                 
-                // Si sube muestra, detenemos monitoreo y la graficamos
                 isMonitoring = false;
                 clearInterval(monitorInterval);
                 document.getElementById('chartTitle').innerText = "Respuesta Espectral (Muestra Cargada por CSV)";
@@ -119,14 +125,13 @@ function processCSV(file, targetType) {
     reader.readAsText(file);
 }
 
-// Conectar inputs de archivo a la función
+// Listeners para los inputs de tipo file ocultos en el HTML
 document.getElementById('fileDark').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'dark'); this.value = null; });
 document.getElementById('fileBlank').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'blank'); this.value = null; });
 document.getElementById('fileSample').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'sample'); this.value = null; });
 
-
 // ==========================================
-// 5. SIMULACIÓN DE DATOS Y ESTADO
+// 5. SIMULACIÓN DE DATOS (Monitoreo en vivo)
 // ==========================================
 function simulateData() {
     let newData = [];
