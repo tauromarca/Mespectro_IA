@@ -57,19 +57,26 @@ let spectroChart = new Chart(ctx, {
     data: {
         labels: nm,
         datasets: [{
-            label: 'Intensidad (counts)',
+            label: 'Intensidad',
             data: currentData,
-            backgroundColor: bgColors, // Usa los colores calculados
-            borderWidth: 1
+            backgroundColor: bgColors,
+            borderColor: 'transparent',
+            borderWidth: 0,           // 👈 SOLUCIÓN 1: Quitar bordes para que no tapen el color
+            barPercentage: 1.0,       // 👈 SOLUCIÓN 2: Ensanchar la barra al máximo
+            categoryPercentage: 1.0   // 👈 SOLUCIÓN 3: Eliminar espacios entre barras
         }]
     },
     options: {
         responsive: true,
         animation: { duration: 0 },
+        plugins: {
+            legend: { display: false } // 👈 SOLUCIÓN 4: Oculta la caja morada que confundía
+        },
         scales: {
             x: { 
                 title: { display: true, text: 'Longitud de Onda en nm' },
-                ticks: { maxRotation: 90, minRotation: 90 } // Rota los textos a 90° como en plt.xticks(rotation=90)
+                ticks: { maxRotation: 90, minRotation: 90 },
+                grid: { display: false } // Ocultar grilla vertical para un aspecto más limpio
             },
             y: { 
                 title: { display: true, text: 'counts/(μW/cm2)' }, 
@@ -111,9 +118,13 @@ function processCSV(file, targetType) {
                 isMonitoring = false;
                 clearInterval(monitorInterval);
                 document.getElementById('chartTitle').innerText = "Respuesta Espectral (Muestra Cargada por CSV)";
+                
+                // Restaura los colores y el tipo de gráfico
                 spectroChart.config.type = 'bar';
                 spectroChart.data.datasets[0].data = sampleData;
                 spectroChart.data.datasets[0].backgroundColor = bgColors;
+                spectroChart.data.datasets[0].borderColor = 'transparent';
+                spectroChart.data.datasets[0].borderWidth = 0;
                 spectroChart.update();
             }
             updateStatus();
@@ -125,7 +136,7 @@ function processCSV(file, targetType) {
     reader.readAsText(file);
 }
 
-// Listeners para los inputs de tipo file ocultos en el HTML
+// Listeners para los inputs de tipo file
 document.getElementById('fileDark').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'dark'); this.value = null; });
 document.getElementById('fileBlank').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'blank'); this.value = null; });
 document.getElementById('fileSample').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'sample'); this.value = null; });
@@ -170,9 +181,14 @@ function updateStatus() {
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true;
     document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
+    
+    // Restaura visualización de barras a color
     spectroChart.config.type = 'bar';
     spectroChart.data.datasets[0].backgroundColor = bgColors;
+    spectroChart.data.datasets[0].borderColor = 'transparent';
+    spectroChart.data.datasets[0].borderWidth = 0;
     spectroChart.options.scales.y.max = 1050;
+    
     if (monitorInterval) clearInterval(monitorInterval);
     monitorInterval = setInterval(updateChart, 100);
 });
@@ -215,10 +231,13 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     }
 
     document.getElementById('chartTitle').innerText = "Absorbancia";
+    
+    // Cambia el gráfico a Línea (Line) y le da estilo
     spectroChart.config.type = 'line';
     spectroChart.data.datasets[0].data = absorbanceData;
     spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)';
     spectroChart.data.datasets[0].borderColor = 'red';
+    spectroChart.data.datasets[0].borderWidth = 2; // La línea sí necesita grosor
     spectroChart.options.scales.y.max = null; 
     spectroChart.update();
 });
