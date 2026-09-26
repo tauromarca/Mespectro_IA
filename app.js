@@ -1,6 +1,5 @@
 // ==========================================
-// 1. GENERACIÓN DE LONGITUDES DE ONDA (nm)
-// Basado en el polinomio de tu código Python (Num serie 23D00088)
+// 1. GENERACIÓN DE LONGITUDES DE ONDA (ENTEROS)
 // ==========================================
 const A_0 = 2.991638797E+02, B_1 = 2.694248478E+00, B_2 = -8.556340170E-04;
 const B_3 = -9.851009025E-06, B_4 = 1.633909302E-08, B_5 = -3.346647530E-12;
@@ -8,7 +7,6 @@ const B_3 = -9.851009025E-06, B_4 = 1.633909302E-08, B_5 = -3.346647530E-12;
 let nm = [];
 let bgColors = [];
 
-// Función para mapear nm a colores para el gráfico de barras
 function nmToRGB(wavelength) {
     if (wavelength < 380) return "darkviolet";
     if (wavelength < 410) return "blueviolet";
@@ -26,8 +24,10 @@ function nmToRGB(wavelength) {
 
 for (let i = 1; i <= 288; i++) {
     let wave = A_0 + (B_1 * i) + (B_2 * Math.pow(i, 2)) + (B_3 * Math.pow(i, 3)) + (B_4 * Math.pow(i, 4)) + (B_5 * Math.pow(i, 5));
-    nm.push(wave.toFixed(1)); // Redondeado a 1 decimal
-    bgColors.push(nmToRGB(wave));
+    // AQUÍ CONVERTIMOS A NÚMERO ENTERO
+    let waveInt = Math.round(wave);
+    nm.push(waveInt); 
+    bgColors.push(nmToRGB(waveInt));
 }
 
 // ==========================================
@@ -58,7 +58,7 @@ let spectroChart = new Chart(ctx, {
     },
     options: {
         responsive: true,
-        animation: { duration: 0 }, // Sin animación para que se vea como en tiempo real
+        animation: { duration: 0 },
         scales: {
             x: { title: { display: true, text: 'Longitud de Onda (nm)' } },
             y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 }
@@ -67,23 +67,78 @@ let spectroChart = new Chart(ctx, {
 });
 
 // ==========================================
-// 4. SIMULACIÓN DE DATOS (Misma lógica de Python)
+// 4. LECTURA DE ARCHIVOS CSV (Subidas locales)
+// ==========================================
+function processCSV(file, targetType) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.trim().split('\n');
+        let dataArr = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            // Ignorar encabezados o líneas vacías
+            if (line === '' || isNaN(parseInt(line[0]))) continue;
+            
+            // Soportar archivos separados por coma (,) o punto y coma (;)
+            let parts = line.split(/[,;]/);
+            
+            // Si tiene 2 columnas (Wavelength, Intensity), toma la 2da. Si tiene 1, toma esa.
+            let val = parts.length > 1 ? parseFloat(parts[1]) : parseFloat(parts[0]);
+            
+            if (!isNaN(val)) {
+                dataArr.push(val);
+            }
+        }
+        
+        // Verificamos tener al menos los 288 datos del espectrómetro
+        if (dataArr.length >= 288) {
+            let parsedData = dataArr.slice(0, 288);
+            
+            if (targetType === 'dark') darkData = parsedData;
+            else if (targetType === 'blank') blankData = parsedData;
+            else if (targetType === 'sample') {
+                sampleData = parsedData;
+                
+                // Si sube muestra, detenemos monitoreo y la graficamos
+                isMonitoring = false;
+                clearInterval(monitorInterval);
+                document.getElementById('chartTitle').innerText = "Respuesta Espectral (Muestra Cargada por CSV)";
+                spectroChart.config.type = 'bar';
+                spectroChart.data.datasets[0].data = sampleData;
+                spectroChart.data.datasets[0].backgroundColor = bgColors;
+                spectroChart.update();
+            }
+            updateStatus();
+            alert(`Archivo ${targetType.toUpperCase()} cargado exitosamente.`);
+        } else {
+            alert(`Error: El archivo no tiene 288 filas de datos. Encontradas: ${dataArr.length}`);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// Conectar inputs de archivo a la función
+document.getElementById('fileDark').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'dark'); this.value = null; });
+document.getElementById('fileBlank').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'blank'); this.value = null; });
+document.getElementById('fileSample').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'sample'); this.value = null; });
+
+
+// ==========================================
+// 5. SIMULACIÓN DE DATOS Y ESTADO
 // ==========================================
 function simulateData() {
     let newData = [];
     for (let i = 0; i < nm.length; i++) {
-        let wl = parseFloat(nm[i]);
+        let wl = nm[i];
         let base = 0;
-        if (wl < 580) {
-            base = 120 + (wl - 301) * 0.2;
-        } else if (wl < 700) {
-            base = 180 + ((wl - 580) / 120) * 450;
-        } else {
-            base = 630 + (wl - 700) * 0.5;
-        }
-        let noise = Math.floor(Math.random() * 70) - 35; // Ruido +-35
-        let finalVal = Math.max(100, Math.min(1000, base + noise));
-        newData.push(finalVal);
+        if (wl < 580) base = 120 + (wl - 301) * 0.2;
+        else if (wl < 700) base = 180 + ((wl - 580) / 120) * 450;
+        else base = 630 + (wl - 700) * 0.5;
+        
+        let noise = Math.floor(Math.random() * 70) - 35;
+        newData.push(Math.max(100, Math.min(1000, base + noise)));
     }
     return newData;
 }
@@ -97,115 +152,87 @@ function updateChart() {
 
 function updateStatus() {
     document.getElementById('statusPanel').innerHTML = `
-        Blanco: ${blankData ? "✔️ Guardado" : "❌ No guardado"}<br>
-        Negro: ${darkData ? "✔️ Guardado" : "❌ No guardado"}<br>
-        Muestra: ${sampleData ? "✔️ Guardada" : "❌ No guardada"}
+        <strong>Estado de Datos:</strong><br><br>
+        Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
     `;
 }
 
 // ==========================================
-// 5. EVENTOS DE LOS BOTONES
+// 6. EVENTOS DE LOS BOTONES
 // ==========================================
-
-// Iniciar Monitoreo
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true;
-    document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo)";
+    document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
     spectroChart.config.type = 'bar';
     spectroChart.data.datasets[0].backgroundColor = bgColors;
     spectroChart.options.scales.y.max = 1050;
     if (monitorInterval) clearInterval(monitorInterval);
-    monitorInterval = setInterval(updateChart, 100); // Actualiza cada 100ms
+    monitorInterval = setInterval(updateChart, 100);
 });
 
-// Detener
 document.getElementById('btnStop').addEventListener('click', () => {
     isMonitoring = false;
     clearInterval(monitorInterval);
 });
 
-// Grabar Negro
 document.getElementById('btnDark').addEventListener('click', () => {
-    darkData = [...currentData]; // Copia el arreglo actual
-    updateStatus();
-    alert("Datos de negro guardados.");
+    darkData = [...currentData]; updateStatus(); alert("Negro guardado del monitor.");
 });
 
-// Grabar Blanco
 document.getElementById('btnBlank').addEventListener('click', () => {
-    blankData = [...currentData];
-    updateStatus();
-    alert("Datos de blanco guardados.");
+    blankData = [...currentData]; updateStatus(); alert("Blanco guardado del monitor.");
 });
 
-// Grabar Muestra
 document.getElementById('btnSample').addEventListener('click', () => {
-    sampleData = [...currentData];
-    updateStatus();
-    alert("Datos de muestra guardados.");
+    sampleData = [...currentData]; updateStatus(); alert("Muestra guardada del monitor.");
 });
 
 // ==========================================
-// 6. CÁLCULO DE ABSORBANCIA (Matemática de Python)
+// 7. CÁLCULO DE ABSORBANCIA
 // ==========================================
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) {
-        alert("Debes grabar Negro, Blanco y Muestra antes de calcular la absorbancia.");
+        alert("Debes tener cargados (en vivo o por CSV) Negro, Blanco y Muestra.");
         return;
     }
-
-    isMonitoring = false; // Detener monitoreo
-    clearInterval(monitorInterval);
+    isMonitoring = false; clearInterval(monitorInterval);
 
     let absorbanceData = [];
     for (let i = 0; i < 288; i++) {
-        // list_1= ((spectroReadings3-negro)/(blanco-negro))
         let num = sampleData[i] - darkData[i];
         let den = blankData[i] - darkData[i];
-        
         let trans = den === 0 ? 0.0001 : num / den;
-        trans = Math.max(1e-4, trans); // Evitar negativos y ceros
-        
-        let inverse = 1 / trans;
-        inverse = Math.max(1e-4, inverse);
-        
-        let abs = Math.log10(inverse);
-        absorbanceData.push(abs);
+        trans = Math.max(1e-4, trans); 
+        let inverse = Math.max(1e-4, 1 / trans);
+        absorbanceData.push(Math.log10(inverse));
     }
 
-    // Cambiar gráfico a línea para Absorbancia
     document.getElementById('chartTitle').innerText = "Absorbancia";
     spectroChart.config.type = 'line';
     spectroChart.data.datasets[0].data = absorbanceData;
     spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)';
     spectroChart.data.datasets[0].borderColor = 'red';
-    spectroChart.options.scales.y.max = null; // Auto escala
+    spectroChart.options.scales.y.max = null; 
     spectroChart.update();
 });
 
 // ==========================================
-// 7. CÁLCULO DE COLOR APROXIMADO
+// 8. CÁLCULO DE COLOR
 // ==========================================
 document.getElementById('btnColor').addEventListener('click', () => {
-    if (!sampleData) {
-        alert("Debes grabar una Muestra primero.");
-        return;
-    }
+    if (!sampleData) { alert("Debes tener una Muestra primero."); return; }
     
-    // Algoritmo simplificado de conversión de espectro a RGB
     let r = 0, g = 0, b = 0;
-    
     for (let i = 0; i < 288; i++) {
-        let wl = parseFloat(nm[i]);
-        let intensity = sampleData[i] / 1000; // Normalizado
-        
-        // Curvas de coincidencia de color CIE (Aproximación simple)
+        let wl = nm[i];
+        let intensity = sampleData[i] / 1000;
         if (wl >= 400 && wl < 500) { b += intensity * (1 - (wl-400)/100); g += intensity * ((wl-400)/100)*0.5; }
         if (wl >= 500 && wl < 600) { g += intensity * (1 - Math.abs(wl-550)/50); r += intensity * ((wl-500)/100); }
         if (wl >= 600 && wl <= 700) { r += intensity * (1 - (wl-600)/100); }
     }
 
-    // Normalizar a 255
     let maxColor = Math.max(r, g, b, 1);
     let R_final = Math.floor((r / maxColor) * 255);
     let G_final = Math.floor((g / maxColor) * 255);
@@ -216,17 +243,12 @@ document.getElementById('btnColor').addEventListener('click', () => {
 });
 
 // ==========================================
-// 8. EXPORTAR A CSV
+// 9. EXPORTAR A CSV
 // ==========================================
 document.getElementById('btnExport').addEventListener('click', () => {
-    if (!sampleData) {
-        alert("Graba una muestra primero para exportar.");
-        return;
-    }
+    if (!sampleData) { alert("Graba o carga una muestra primero para exportar."); return; }
 
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Wavelength(nm),Intensity\n";
-    
+    let csvContent = "data:text/csv;charset=utf-8,Wavelength(nm),Intensity\n";
     for (let i = 0; i < 288; i++) {
         csvContent += `${nm[i]},${sampleData[i]}\n`;
     }
@@ -234,9 +256,8 @@ document.getElementById('btnExport').addEventListener('click', () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    
     let date = new Date();
-    link.setAttribute("download", `Espectro_${date.getHours()}${date.getMinutes()}.csv`);
+    link.setAttribute("download", `Espectro_Muestra_${date.getHours()}${date.getMinutes()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
