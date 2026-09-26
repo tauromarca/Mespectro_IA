@@ -1,226 +1,243 @@
-// ============================================================================
-// ESTADO GLOBAL DE LA APLICACIÓN
-// ============================================================================
-let nombre_archivo_blanco = "";
-let nombre_archivo_negro = "";
-let nombre_archivo_muestra = "";
+// ==========================================
+// 1. GENERACIÓN DE LONGITUDES DE ONDA (nm)
+// Basado en el polinomio de tu código Python (Num serie 23D00088)
+// ==========================================
+const A_0 = 2.991638797E+02, B_1 = 2.694248478E+00, B_2 = -8.556340170E-04;
+const B_3 = -9.851009025E-06, B_4 = 1.633909302E-08, B_5 = -3.346647530E-12;
 
-let archivo_blanco = [];
-let archivo_negro = [];
-let archivo_muestra = [];
+let nm = [];
+let bgColors = [];
 
-// Longitudes de onda por defecto (según tu string de Python)
-const espectro_ondas =;
-let spectroReadings1 = []; // Simulación de lecturas de hardware
+// Función para mapear nm a colores para el gráfico de barras
+function nmToRGB(wavelength) {
+    if (wavelength < 380) return "darkviolet";
+    if (wavelength < 410) return "blueviolet";
+    if (wavelength < 450) return "violet";
+    if (wavelength < 480) return "blue";
+    if (wavelength < 500) return "cyan";
+    if (wavelength < 550) return "green";
+    if (wavelength < 570) return "greenyellow";
+    if (wavelength < 580) return "yellow";
+    if (wavelength < 620) return "orange";
+    if (wavelength < 700) return "red";
+    if (wavelength < 760) return "darkred";
+    return "maroon";
+}
 
-// Datos para la animación simulada de prueba
-const languages1 = ['Python', 'JS', 'C++', 'Java', 'HTML'];
-const popularity1 =;
-const colores1 = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
+for (let i = 1; i <= 288; i++) {
+    let wave = A_0 + (B_1 * i) + (B_2 * Math.pow(i, 2)) + (B_3 * Math.pow(i, 3)) + (B_4 * Math.pow(i, 4)) + (B_5 * Math.pow(i, 5));
+    nm.push(wave.toFixed(1)); // Redondeado a 1 decimal
+    bgColors.push(nmToRGB(wave));
+}
 
-const languages2 = ['Ruby', 'Go', 'Rust', 'PHP', 'Swift'];
-const popularity2 =;
-const colores2 = ['#e67e22', '#1abc9c', '#e74c3c', '#34495e', '#d35400'];
+// ==========================================
+// 2. VARIABLES GLOBALES DE ESTADO
+// ==========================================
+let isMonitoring = false;
+let monitorInterval;
+let currentData = new Array(288).fill(0);
 
-let chartInstance = null;
-let puertoSerial = null; // Para conectar hardware real desde el navegador
+let darkData = null;
+let blankData = null;
+let sampleData = null;
 
-// ============================================================================
-// INICIALIZACIÓN (Reemplazo de inicio1)
-// ============================================================================
-document.addEventListener("DOMContentLoaded", () => {
-    inicializarGrafico();
-    configurarEventos();
-    iniciarAnimacionSimulada(); // Inicia el equivalente de FuncAnimation
+// ==========================================
+// 3. CONFIGURACIÓN DEL GRÁFICO (Chart.js)
+// ==========================================
+const ctx = document.getElementById('spectroChart').getContext('2d');
+let spectroChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: nm,
+        datasets: [{
+            label: 'Intensidad (counts)',
+            data: currentData,
+            backgroundColor: bgColors,
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        animation: { duration: 0 }, // Sin animación para que se vea como en tiempo real
+        scales: {
+            x: { title: { display: true, text: 'Longitud de Onda (nm)' } },
+            y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 }
+        }
+    }
 });
 
-function inicializarGrafico() {
-    const ctx = document.getElementById('espectroChart').getContext('2d');
-    chartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: languages1,
-            datasets: [{
-                label: 'Popularidad / Intensidad',
-                data: popularity1,
-                backgroundColor: colores1,
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                title: { display: true, text: 'Top Programming Languages / Espectro' }
-            },
-            scales: { y: { beginAtZero: true } }
-        }
-    });
-}
-
-// Configura los listeners de los elementos HTML (Reemplazo de los commands de Tkinter)
-function configurarEventos() {
-    document.getElementById('file-blanco').addEventListener('change', (e) => leerArchivo(e, 'blanco'));
-    document.getElementById('file-negro').addEventListener('change', (e) => leerArchivo(e, 'negro'));
-    document.getElementById('file-muestra').addEventListener('change', (e) => leerArchivo(e, 'muestra'));
-    document.getElementById('btn-enviar').addEventListener('click', () => {
-        prueba_progreso();
-        grabar_muestra_simulado();
-    });
-    document.getElementById('btn-conectar').addEventListener('click', conectarHardware);
-}
-
-// ============================================================================
-// EQUIVALENTE A FUNCANIMATION (Matplotlib)
-// ============================================================================
-function iniciarAnimacionSimulada() {
-    let i = 0;
-    setInterval(() => {
-        i++;
-        if (i >= 20) i = 1; // np.arange(1, 20)
-        
-        console.log("i =", i);
-        
-        // Lógica de update idéntica a tu función animate1(i)
-        if (i < 10) {
-            chartInstance.data.labels = languages1;
-            chartInstance.data.datasets[0].data = popularity1;
-            chartInstance.data.datasets[0].backgroundColor = colores1;
+// ==========================================
+// 4. SIMULACIÓN DE DATOS (Misma lógica de Python)
+// ==========================================
+function simulateData() {
+    let newData = [];
+    for (let i = 0; i < nm.length; i++) {
+        let wl = parseFloat(nm[i]);
+        let base = 0;
+        if (wl < 580) {
+            base = 120 + (wl - 301) * 0.2;
+        } else if (wl < 700) {
+            base = 180 + ((wl - 580) / 120) * 450;
         } else {
-            chartInstance.data.labels = languages2;
-            chartInstance.data.datasets[0].data = popularity2;
-            chartInstance.data.datasets[0].backgroundColor = colores2;
+            base = 630 + (wl - 700) * 0.5;
         }
-        chartInstance.update('none'); // Actualiza el gráfico sin animaciones bruscas
-    }, 250); // 250ms de intervalo
-}
-
-// ============================================================================
-// PROCESAMIENTO MATRICIAL (Reemplazo de NumPy y Pandas)
-// ============================================================================
-
-const transponerMatriz = (matriz) => 
-    matriz.map((_, colIndex) => matriz.map(row => row[colIndex]));
-
-function leerArchivo(evento, tipo) {
-    const archivo = evento.target.files[0];
-    if (!archivo) return;
-
-    const lector = new FileReader();
-    lector.onload = function(e) {
-        const contenido = e.target.result;
-        if (tipo === 'blanco') crear_blanco(contenido, archivo.name);
-        if (tipo === 'negro') crear_negro(contenido, archivo.name);
-        if (tipo === 'muestra') crear_muestra(contenido, archivo.name);
-    };
-    lector.readAsText(archivo);
-}
-
-function cerrar_muestra() {
-    console.log("Cerrando muestra previa...");
-    document.getElementById('progreso-bloque').style.display = 'none';
-}
-
-function crear_blanco(contenidoCSV, nombre) {
-    cerrar_muestra();
-    archivo_blanco = [];
-
-    // Parsear filas delimitadas por ';' y procesar un máximo de 288 filas
-    let filas = contenidoCSV.trim().split("\n").slice(0, 288);
-    let matriz = filas.map(fila => fila.split(";").map(val => Math.round(parseFloat(val) || 0)));
-
-    let matrizTranspuesta = transponerMatriz(matriz);
-    archivo_blanco = matrizTranspuesta[matrizTranspuesta.length - 1]; // Última columna
-
-    nombre_archivo_blanco = nombre;
-    console.log("Archivo blanco inicializado:", archivo_blanco);
-}
-
-function crear_negro(contenidoCSV, nombre) {
-    cerrar_muestra();
-    archivo_negro = [];
-
-    let filas = contenidoCSV.trim().split("\n").slice(0, 288);
-    let matriz = filas.map(fila => fila.split(";").map(val => Math.round(parseFloat(val) || 0)));
-
-    let matrizTranspuesta = transponerMatriz(matriz);
-    archivo_negro = matrizTranspuesta[matrizTranspuesta.length - 1];
-
-    nombre_archivo_negro = nombre;
-    console.log("Archivo negro inicializado:", archivo_negro);
-}
-
-function convertir_fila(fila) {
-    let primeraCelda = String(fila[0]).toUpperCase();
-    if (["PH", "DENSIDAD", "ALCOHOL"].includes(primeraCelda)) {
-        return fila; 
+        let noise = Math.floor(Math.random() * 70) - 35; // Ruido +-35
+        let finalVal = Math.max(100, Math.min(1000, base + noise));
+        newData.push(finalVal);
     }
-    return fila.map(x => {
-        let num = parseFloat(x);
-        return isNaN(num) ? x : Math.round(num);
-    });
+    return newData;
 }
 
-function crear_muestra(contenidoCSV, nombre) {
-    cerrar_muestra();
+function updateChart() {
+    if (!isMonitoring) return;
+    currentData = simulateData();
+    spectroChart.data.datasets[0].data = currentData;
+    spectroChart.update();
+}
 
-    if (nombre_archivo_blanco.length < 1) {
-        alert("Error falta archivo de blancos: Debe cargar archivo de blancos");
+function updateStatus() {
+    document.getElementById('statusPanel').innerHTML = `
+        Blanco: ${blankData ? "✔️ Guardado" : "❌ No guardado"}<br>
+        Negro: ${darkData ? "✔️ Guardado" : "❌ No guardado"}<br>
+        Muestra: ${sampleData ? "✔️ Guardada" : "❌ No guardada"}
+    `;
+}
+
+// ==========================================
+// 5. EVENTOS DE LOS BOTONES
+// ==========================================
+
+// Iniciar Monitoreo
+document.getElementById('btnMonitor').addEventListener('click', () => {
+    isMonitoring = true;
+    document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo)";
+    spectroChart.config.type = 'bar';
+    spectroChart.data.datasets[0].backgroundColor = bgColors;
+    spectroChart.options.scales.y.max = 1050;
+    if (monitorInterval) clearInterval(monitorInterval);
+    monitorInterval = setInterval(updateChart, 100); // Actualiza cada 100ms
+});
+
+// Detener
+document.getElementById('btnStop').addEventListener('click', () => {
+    isMonitoring = false;
+    clearInterval(monitorInterval);
+});
+
+// Grabar Negro
+document.getElementById('btnDark').addEventListener('click', () => {
+    darkData = [...currentData]; // Copia el arreglo actual
+    updateStatus();
+    alert("Datos de negro guardados.");
+});
+
+// Grabar Blanco
+document.getElementById('btnBlank').addEventListener('click', () => {
+    blankData = [...currentData];
+    updateStatus();
+    alert("Datos de blanco guardados.");
+});
+
+// Grabar Muestra
+document.getElementById('btnSample').addEventListener('click', () => {
+    sampleData = [...currentData];
+    updateStatus();
+    alert("Datos de muestra guardados.");
+});
+
+// ==========================================
+// 6. CÁLCULO DE ABSORBANCIA (Matemática de Python)
+// ==========================================
+document.getElementById('btnAbsorbance').addEventListener('click', () => {
+    if (!blankData || !darkData || !sampleData) {
+        alert("Debes grabar Negro, Blanco y Muestra antes de calcular la absorbancia.");
         return;
     }
 
-    let filas = contenidoCSV.trim().split("\n");
-    let df = filas.map(fila => fila.split(";"));
+    isMonitoring = false; // Detener monitoreo
+    clearInterval(monitorInterval);
 
-    // Aplicar conversión por filas (Equivalente al axis=1 de Pandas)
-    df = df.map(fila => convertir_fila(fila));
+    let absorbanceData = [];
+    for (let i = 0; i < 288; i++) {
+        // list_1= ((spectroReadings3-negro)/(blanco-negro))
+        let num = sampleData[i] - darkData[i];
+        let den = blankData[i] - darkData[i];
+        
+        let trans = den === 0 ? 0.0001 : num / den;
+        trans = Math.max(1e-4, trans); // Evitar negativos y ceros
+        
+        let inverse = 1 / trans;
+        inverse = Math.max(1e-4, inverse);
+        
+        let abs = Math.log10(inverse);
+        absorbanceData.push(abs);
+    }
 
-    let archivo_muestra_completo = transponerMatriz(df);
-    archivo_muestra = archivo_muestra_completo.slice(0, 288); // Recorte matricial [:288, :]
+    // Cambiar gráfico a línea para Absorbancia
+    document.getElementById('chartTitle').innerText = "Absorbancia";
+    spectroChart.config.type = 'line';
+    spectroChart.data.datasets[0].data = absorbanceData;
+    spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)';
+    spectroChart.data.datasets[0].borderColor = 'red';
+    spectroChart.options.scales.y.max = null; // Auto escala
+    spectroChart.update();
+});
 
-    nombre_archivo_muestra = nombre;
-    console.log("Archivo Muestra procesado con éxito.");
-}
-
-// ============================================================================
-// HARDWARE / WEB SERIAL API (Reemplazo de serial/list_ports de Python)
-// ============================================================================
-async function conectarHardware() {
-    if (!("serial" in navigator)) {
-        alert("Tu navegador no soporta comunicación Serial por hardware. Usa Google Chrome o Edge.");
+// ==========================================
+// 7. CÁLCULO DE COLOR APROXIMADO
+// ==========================================
+document.getElementById('btnColor').addEventListener('click', () => {
+    if (!sampleData) {
+        alert("Debes grabar una Muestra primero.");
         return;
     }
-    try {
-        // Pide permiso al usuario para abrir el puerto COM/USB
-        puertoSerial = await navigator.serial.requestPort();
-        await puertoSerial.open({ baudRate: 9600 });
-        alert("¡Hardware conectado exitosamente a la Web!");
-    } catch (error) {
-        console.error("Error conectando al puerto serial:", error);
-    }
-}
-
-// ============================================================================
-// INTERFAZ DE PROGRESO SIMULADA (Reemplazo del hilo/thread de progreso)
-// ============================================================================
-function prueba_progreso() {
-    cerrar_muestra();
-    const bloque = document.getElementById('progreso-bloque');
-    const barra = document.getElementById('progreso-barra');
     
-    bloque.style.display = 'block';
-    barra.value = 0;
+    // Algoritmo simplificado de conversión de espectro a RGB
+    let r = 0, g = 0, b = 0;
+    
+    for (let i = 0; i < 288; i++) {
+        let wl = parseFloat(nm[i]);
+        let intensity = sampleData[i] / 1000; // Normalizado
+        
+        // Curvas de coincidencia de color CIE (Aproximación simple)
+        if (wl >= 400 && wl < 500) { b += intensity * (1 - (wl-400)/100); g += intensity * ((wl-400)/100)*0.5; }
+        if (wl >= 500 && wl < 600) { g += intensity * (1 - Math.abs(wl-550)/50); r += intensity * ((wl-500)/100); }
+        if (wl >= 600 && wl <= 700) { r += intensity * (1 - (wl-600)/100); }
+    }
 
-    let intervalo = setInterval(() => {
-        barra.value += 10; // Incremento
-        if (barra.value >= 100) {
-            clearInterval(intervalo);
-            setTimeout(() => bloque.style.display = 'none', 500);
-        }
-    }, 100);
-}
+    // Normalizar a 255
+    let maxColor = Math.max(r, g, b, 1);
+    let R_final = Math.floor((r / maxColor) * 255);
+    let G_final = Math.floor((g / maxColor) * 255);
+    let B_final = Math.floor((b / maxColor) * 255);
 
-function grabar_muestra_simulado() {
-    console.log("Generando archivo CSV para descarga...");
-    // Aquí puedes disparar una descarga automática del archivo modificado si lo deseas
-}
+    document.getElementById('colorBox').style.backgroundColor = `rgb(${R_final}, ${G_final}, ${B_final})`;
+    document.getElementById('rgbText').innerText = `RGB: (${R_final}, ${G_final}, ${B_final})`;
+});
+
+// ==========================================
+// 8. EXPORTAR A CSV
+// ==========================================
+document.getElementById('btnExport').addEventListener('click', () => {
+    if (!sampleData) {
+        alert("Graba una muestra primero para exportar.");
+        return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Wavelength(nm),Intensity\n";
+    
+    for (let i = 0; i < 288; i++) {
+        csvContent += `${nm[i]},${sampleData[i]}\n`;
+    }
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    
+    let date = new Date();
+    link.setAttribute("download", `Espectro_${date.getHours()}${date.getMinutes()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+});
