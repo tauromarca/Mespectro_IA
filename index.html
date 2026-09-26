@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mini Espectrómetro Espectro-IA</title>
-    <!-- Importamos Chart.js para los gráficos (Reemplazo de Matplotlib) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
@@ -21,16 +20,22 @@
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            max-height: 95vh;
         }
-        .sidebar h2 { font-size: 18px; border-bottom: 1px solid #7f8c8d; padding-bottom: 10px; }
+        .sidebar h2 { font-size: 16px; border-bottom: 1px solid #7f8c8d; padding-bottom: 8px; margin-top: 25px; }
+        .sidebar h2:first-child { margin-top: 0; }
+        
         .btn {
-            display: block; width: 100%; padding: 10px; margin: 10px 0;
+            display: block; width: 100%; padding: 8px; margin: 8px 0;
             background-color: #f39c12; color: white; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold;
+            border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold;
         }
         .btn:hover { background-color: #e67e22; }
         .btn-blue { background-color: #2980b9; }
         .btn-blue:hover { background-color: #3498db; }
+        .btn-green { background-color: #27ae60; }
+        .btn-green:hover { background-color: #2ecc71; }
         .btn-danger { background-color: #c0392b; }
         
         .main-content {
@@ -45,29 +50,41 @@
             width: 100px; height: 100px; background-color: black;
             border: 2px solid #ccc; border-radius: 10px; margin-right: 20px;
         }
-        .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; }
+        .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; background: #34495e; padding: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
     <div class="sidebar">
-        <h2>Control Espectral</h2>
+        <h2>🔴 Control en Vivo</h2>
         <button class="btn" id="btnMonitor">Iniciar Monitoreo</button>
-        <button class="btn" id="btnDark">Grabar Negro</button>
-        <button class="btn" id="btnBlank">Grabar Blanco</button>
-        <button class="btn" id="btnSample">Grabar Muestra</button>
+        <button class="btn" id="btnDark">Grabar Negro (Vivo)</button>
+        <button class="btn" id="btnBlank">Grabar Blanco (Vivo)</button>
+        <button class="btn" id="btnSample">Grabar Muestra (Vivo)</button>
         
-        <h2 style="margin-top: 30px;">Análisis</h2>
+        <!-- MINI MENÚ DE SUBIDA DE ARCHIVOS -->
+        <h2>📁 Cargar Archivos CSV</h2>
+        <input type="file" id="fileDark" accept=".csv" style="display: none;">
+        <button class="btn btn-green" onclick="document.getElementById('fileDark').click()">📥 Subir Negro</button>
+
+        <input type="file" id="fileBlank" accept=".csv" style="display: none;">
+        <button class="btn btn-green" onclick="document.getElementById('fileBlank').click()">📥 Subir Blanco</button>
+        
+        <input type="file" id="fileSample" accept=".csv" style="display: none;">
+        <button class="btn btn-green" onclick="document.getElementById('fileSample').click()">📥 Subir Muestra</button>
+
+        <h2>📊 Análisis</h2>
         <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
         <button class="btn btn-blue" id="btnColor">Calcular Color</button>
-        <button class="btn btn-blue" id="btnExport">Exportar CSV</button>
+        <button class="btn btn-blue" id="btnExport">Exportar Muestra CSV</button>
         
         <button class="btn btn-danger" id="btnStop">Detener / Limpiar</button>
 
         <div class="status" id="statusPanel">
-            Blanco: No guardado<br>
-            Negro: No guardado<br>
-            Muestra: No guardada
+            <strong>Estado de Datos:</strong><br><br>
+            Blanco: ❌ Vacío<br>
+            Negro: ❌ Vacío<br>
+            Muestra: ❌ Vacía
         </div>
     </div>
 
