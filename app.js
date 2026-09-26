@@ -60,23 +60,23 @@ let spectroChart = new Chart(ctx, {
             label: 'Intensidad',
             data: currentData,
             backgroundColor: bgColors,
-            borderColor: 'transparent',
-            borderWidth: 0,           // 👈 SOLUCIÓN 1: Quitar bordes para que no tapen el color
-            barPercentage: 1.0,       // 👈 SOLUCIÓN 2: Ensanchar la barra al máximo
-            categoryPercentage: 1.0   // 👈 SOLUCIÓN 3: Eliminar espacios entre barras
+            borderColor: bgColors,     // 👈 SOLUCIÓN: El borde también tiene el color exacto
+            borderWidth: 1,            // 👈 Forzamos a que siempre se dibuje un trazo a color
+            barPercentage: 1.0,
+            categoryPercentage: 1.0
         }]
     },
     options: {
         responsive: true,
         animation: { duration: 0 },
         plugins: {
-            legend: { display: false } // 👈 SOLUCIÓN 4: Oculta la caja morada que confundía
+            legend: { display: false }
         },
         scales: {
             x: { 
                 title: { display: true, text: 'Longitud de Onda en nm' },
                 ticks: { maxRotation: 90, minRotation: 90 },
-                grid: { display: false } // Ocultar grilla vertical para un aspecto más limpio
+                grid: { display: false } 
             },
             y: { 
                 title: { display: true, text: 'counts/(μW/cm2)' }, 
@@ -123,8 +123,8 @@ function processCSV(file, targetType) {
                 spectroChart.config.type = 'bar';
                 spectroChart.data.datasets[0].data = sampleData;
                 spectroChart.data.datasets[0].backgroundColor = bgColors;
-                spectroChart.data.datasets[0].borderColor = 'transparent';
-                spectroChart.data.datasets[0].borderWidth = 0;
+                spectroChart.data.datasets[0].borderColor = bgColors; // Restaura bordes
+                spectroChart.data.datasets[0].borderWidth = 1;
                 spectroChart.update();
             }
             updateStatus();
@@ -163,7 +163,8 @@ function updateChart() {
     if (!isMonitoring) return;
     currentData = simulateData();
     spectroChart.data.datasets[0].data = currentData;
-    spectroChart.update();
+    // Utilizamos update('none') para evitar parpadeos y cargar más rápido en vivo
+    spectroChart.update('none');
 }
 
 function updateStatus() {
@@ -185,8 +186,8 @@ document.getElementById('btnMonitor').addEventListener('click', () => {
     // Restaura visualización de barras a color
     spectroChart.config.type = 'bar';
     spectroChart.data.datasets[0].backgroundColor = bgColors;
-    spectroChart.data.datasets[0].borderColor = 'transparent';
-    spectroChart.data.datasets[0].borderWidth = 0;
+    spectroChart.data.datasets[0].borderColor = bgColors; // Restaura bordes
+    spectroChart.data.datasets[0].borderWidth = 1;
     spectroChart.options.scales.y.max = 1050;
     
     if (monitorInterval) clearInterval(monitorInterval);
@@ -232,12 +233,11 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
 
     document.getElementById('chartTitle').innerText = "Absorbancia";
     
-    // Cambia el gráfico a Línea (Line) y le da estilo
     spectroChart.config.type = 'line';
     spectroChart.data.datasets[0].data = absorbanceData;
     spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)';
     spectroChart.data.datasets[0].borderColor = 'red';
-    spectroChart.data.datasets[0].borderWidth = 2; // La línea sí necesita grosor
+    spectroChart.data.datasets[0].borderWidth = 2;
     spectroChart.options.scales.y.max = null; 
     spectroChart.update();
 });
