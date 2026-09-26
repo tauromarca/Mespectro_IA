@@ -32,7 +32,40 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. VARIABLES GLOBALES DE ESTADO
+// 2. FUNCIONES MATEMÁTICAS CIE COLOR SCIENCE 
+// (Calculadas al inicio para pre-armar el gráfico)
+// ==========================================
+function getXYZ_CMF(wave) {
+    let x = 1.056*Math.exp(-0.5*Math.pow((wave-599.8)/43.2, 2)) + 0.362*Math.exp(-0.5*Math.pow((wave-442.0)/20.6, 2)) - 0.065*Math.exp(-0.5*Math.pow((wave-501.1)/26.9, 2));
+    let y = 0.821*Math.exp(-0.5*Math.pow((wave-568.8)/46.9, 2)) + 0.286*Math.exp(-0.5*Math.pow((wave-530.9)/16.3, 2));
+    let z = 1.217*Math.exp(-0.5*Math.pow((wave-437.0)/11.8, 2)) + 0.681*Math.exp(-0.5*Math.pow((wave-459.0)/26.0, 2));
+    return {x: Math.max(0, x), y: Math.max(0, y), z: Math.max(0, z)};
+}
+
+function XYZto_up_vp(X, Y, Z) {
+    let denom = X + 15 * Y + 3 * Z;
+    if (denom === 0) return {x: 0, y: 0};
+    return { x: (4 * X) / denom, y: (9 * Y) / denom }; // Guardado como {x, y} obligatorio para Chart.js
+}
+
+function XYZtosRGB(X, Y, Z) {
+    let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
+    let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
+    let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+    let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
+}
+
+// Generar puntos de la Herradura (Spectral Locus)
+let locusPoints = [];
+for (let wl = 400; wl <= 700; wl += 5) {
+    let cmf = getXYZ_CMF(wl);
+    locusPoints.push(XYZto_up_vp(cmf.x, cmf.y, cmf.z));
+}
+locusPoints.push(locusPoints[0]); // Cerrar la forma (Línea de púrpuras)
+
+// ==========================================
+// 3. VARIABLES GLOBALES DE ESTADO
 // ==========================================
 let isMonitoring = false;
 let monitorInterval;
@@ -42,7 +75,7 @@ let blankData = null;
 let sampleData = null;
 
 // ==========================================
-// 3. CONFIGURACIÓN DEL GRÁFICO PRINCIPAL
+// 4. CONFIGURACIÓN DE LOS GRÁFICOS
 // ==========================================
 const ctx = document.getElementById('spectroChart').getContext('2d');
 let spectroChart = new Chart(ctx, {
@@ -70,19 +103,37 @@ let spectroChart = new Chart(ctx, {
     }
 });
 
-// ==========================================
-// CONFIGURACIÓN DE LOS GRÁFICOS DE COLOR
-// ==========================================
+// ¡CORRECCIÓN AQUÍ! Se pre-configuran todos los datasets desde el inicio para evitar bugs
 let chromaticityChart = new Chart(document.getElementById('chromaticityChart').getContext('2d'), {
-    type: 'scatter',
-    data: { datasets: [] },
+    type: 'scatter', // Formato base scatter siempre
+    data: { 
+        datasets: [
+            {
+                label: "sRGB Triangle",
+                data: [ {x: 0.4508, y: 0.5229}, {x: 0.1250, y: 0.5625}, {x: 0.1754, y: 0.1579}, {x: 0.4508, y: 0.5229} ],
+                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2, pointRadius: 0
+            },
+            {
+                label: "Spectral Locus",
+                data: locusPoints,
+                borderColor: "black", backgroundColor: "transparent", showLine: true, borderWidth: 2, pointRadius: 0
+            },
+            {
+                label: "Muestra",
+                data: [], // Inicia vacío, se llena al presionar el botón
+                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
+            }
+        ] 
+    },
     options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
             x: { type: 'linear', position: 'bottom', min: -0.1, max: 0.7, title: { display: true, text: "CIE u'" } },
             y: { type: 'linear', min: -0.1, max: 0.7, title: { display: true, text: "CIE v'" } }
         },
-        plugins: { legend: { position: 'top' } }
+        plugins: { 
+            legend: { position: 'top', labels: { usePointStyle: true } } // Hace que la leyenda se vea como puntitos/lineas y no rectángulos
+        }
     }
 });
 
@@ -92,15 +143,12 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
     options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { 
-            x: { display: false }, 
-            y: { display: false, min: 0 } // Dejamos que escale automáticamente de forma segura
-        }
+        scales: { x: { display: false }, y: { display: false, min: 0 } }
     }
 });
 
 // ==========================================
-// LÓGICA DE MANEJO DE VISTAS
+// 5. LÓGICA DE VISTAS Y DATOS
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -112,14 +160,10 @@ function setView(viewMode) {
     }
 }
 
-// ==========================================
-// LECTURA DE CSV Y MANEJO DE DATOS
-// ==========================================
 function processCSV(file, targetType) {
     const reader = new FileReader();
     reader.onload = function(e) {
-        const text = e.target.result;
-        const lines = text.trim().split('\n');
+        const lines = e.target.result.trim().split('\n');
         let dataArr = [];
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
@@ -161,40 +205,7 @@ function updateStatus() {
 }
 
 // ==========================================
-// FUNCIONES MATEMÁTICAS CIE COLOR SCIENCE 
-// ==========================================
-function getXYZ_CMF(wave) {
-    let x = 1.056*Math.exp(-0.5*Math.pow((wave-599.8)/43.2, 2)) + 0.362*Math.exp(-0.5*Math.pow((wave-442.0)/20.6, 2)) - 0.065*Math.exp(-0.5*Math.pow((wave-501.1)/26.9, 2));
-    let y = 0.821*Math.exp(-0.5*Math.pow((wave-568.8)/46.9, 2)) + 0.286*Math.exp(-0.5*Math.pow((wave-530.9)/16.3, 2));
-    let z = 1.217*Math.exp(-0.5*Math.pow((wave-437.0)/11.8, 2)) + 0.681*Math.exp(-0.5*Math.pow((wave-459.0)/26.0, 2));
-    return {x: Math.max(0, x), y: Math.max(0, y), z: Math.max(0, z)};
-}
-
-function XYZto_up_vp(X, Y, Z) {
-    let denom = X + 15 * Y + 3 * Z;
-    // ⚠️ CORRECCIÓN CLAVE AQUÍ: Chart.js exige que las variables se llamen 'x' e 'y', no 'u' y 'v'
-    if (denom === 0) return {x: 0, y: 0};
-    return { x: (4 * X) / denom, y: (9 * Y) / denom };
-}
-
-function XYZtosRGB(X, Y, Z) {
-    let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
-    let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
-    let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
-    
-    let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    return [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
-}
-
-// Generar puntos del locus espectral (herradura)
-let locusPoints = [];
-for (let wl = 400; wl <= 700; wl += 5) {
-    let cmf = getXYZ_CMF(wl);
-    locusPoints.push(XYZto_up_vp(cmf.x, cmf.y, cmf.z));
-}
-
-// ==========================================
-// EVENTOS BOTONES PRINCIPALES
+// 6. EVENTOS BOTONES PRINCIPALES
 // ==========================================
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true; setView('monitor');
@@ -237,25 +248,22 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.options.scales.y.max = null; spectroChart.update();
 });
 
-// COLOR ESPECTRAL (Corregido el Scatter y los Picos)
+// COLOR ESPECTRAL
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     
     isMonitoring = false; clearInterval(monitorInterval);
-    setView('colorAnalysis'); // Mostrar la vista de color
+    setView('colorAnalysis'); // Cambiar a la vista de los 3 paneles
 
     let X = 0, Y = 0, Z = 0;
     let spectrumVals = [];
     
-    // 1. Calcular distribución y evitar picos infinitos por división por cero
     for (let i = 0; i < 288; i++) {
         let num = sampleData[i] - darkData[i];
         let den = blankData[i] - darkData[i];
         
         let val = num / Math.max(1e-4, den);
-        
-        // ⚠️ CORRECCIÓN CLAVE: Limitar el valor máximo para evitar que un ruido aplaste el gráfico
-        val = Math.max(0, Math.min(2.5, val)); 
+        val = Math.max(0, Math.min(2.5, val)); // Protección contra picos gigantes
         
         spectrumVals.push(val);
 
@@ -270,32 +278,13 @@ document.getElementById('btnColor').addEventListener('click', () => {
     let srgb = XYZtosRGB(X, Y, Z);
     let rgbStr = `rgb(${Math.round(srgb[0]*255)}, ${Math.round(srgb[1]*255)}, ${Math.round(srgb[2]*255)})`;
 
-    // 3. Actualizar Diagrama de Cromaticidad (Ahora con coordenadas X e Y)
-    chromaticityChart.data.datasets = [
-        {
-            label: "sRGB Triangle",
-            // Coordenadas sRGB pre-calculadas en u' v' (Mapeadas a x, y para Chart.js)
-            data: [ {x: 0.4508, y: 0.5229}, {x: 0.1250, y: 0.5625}, {x: 0.1754, y: 0.1579}, {x: 0.4508, y: 0.5229} ],
-            borderColor: "red", backgroundColor: "transparent", showLine: true, pointRadius: 4, type: 'line'
-        },
-        {
-            label: "Muestra",
-            data: [{x: coords.x, y: coords.y}], // Pasa el punto exacto
-            backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
-        },
-        {
-            label: "Spectral Locus",
-            data: locusPoints,
-            borderColor: "black", backgroundColor: "black", showLine: true, pointRadius: 2, type: 'line'
-        }
-    ];
+    // Actualizar solo el punto de la muestra en el Diagrama (El índice 2)
+    chromaticityChart.data.datasets[2].data = [{x: coords.x, y: coords.y}];
     chromaticityChart.update();
 
-    // 4. Actualizar Distribución Espectral
+    // Actualizar Distribución Espectral (Gradiente debajo de la curva)
     let canvasDist = document.getElementById('distributionChart');
     let ctxDist = canvasDist.getContext('2d');
-    
-    // El gradiente ahora se adapta al ancho real del canvas
     let gradient = ctxDist.createLinearGradient(0, 0, canvasDist.clientWidth, 0); 
     gradient.addColorStop(0, "darkviolet");
     gradient.addColorStop(0.3, "blue");
@@ -308,7 +297,7 @@ document.getElementById('btnColor').addEventListener('click', () => {
     distributionChart.data.datasets[0].borderColor = "black";
     distributionChart.update();
 
-    // 5. Actualizar Color Box
+    // Actualizar Cuadro de Color y Texto
     document.getElementById('colorBoxDisplay').style.backgroundColor = rgbStr;
     document.getElementById('srgbText').innerText = `SRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
 });
