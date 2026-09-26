@@ -18,7 +18,8 @@ function getColorParaOnda(onda) {
     if (onda >= 570 && onda < 580) return "yellow";
     if (onda >= 580 && onda < 620) return "orange";
     if (onda >= 620 && onda < 700) return "red";
-    if (onda >= 700 && onda <= 760) return "darkred";
+    if (onda >= 700 && onda < 720) return "darkred";
+    if (onda >= 720 && onda <= 760) return "darkred";
     if (onda > 760) return "maroon";
     return "black"; 
 }
@@ -59,7 +60,7 @@ let spectroChart = new Chart(ctx, {
         }]
     },
     options: {
-        responsive: true,
+        responsive: true, maintainAspectRatio: false,
         animation: { duration: 0 },
         plugins: { legend: { display: false } },
         scales: {
@@ -91,7 +92,10 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
     options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { x: { display: false }, y: { display: false, min: 0 } }
+        scales: { 
+            x: { display: false }, 
+            y: { display: false, min: 0 } // Dejamos que escale automáticamente de forma segura
+        }
     }
 });
 
@@ -157,10 +161,9 @@ function updateStatus() {
 }
 
 // ==========================================
-// FUNCIONES MATEMÁTICAS CIE COLOR SCIENCE (Aproximación Analítica)
+// FUNCIONES MATEMÁTICAS CIE COLOR SCIENCE 
 // ==========================================
 function getXYZ_CMF(wave) {
-    // Aproximaciones gaussianas para funciones de coincidencia CIE 1931 2°
     let x = 1.056*Math.exp(-0.5*Math.pow((wave-599.8)/43.2, 2)) + 0.362*Math.exp(-0.5*Math.pow((wave-442.0)/20.6, 2)) - 0.065*Math.exp(-0.5*Math.pow((wave-501.1)/26.9, 2));
     let y = 0.821*Math.exp(-0.5*Math.pow((wave-568.8)/46.9, 2)) + 0.286*Math.exp(-0.5*Math.pow((wave-530.9)/16.3, 2));
     let z = 1.217*Math.exp(-0.5*Math.pow((wave-437.0)/11.8, 2)) + 0.681*Math.exp(-0.5*Math.pow((wave-459.0)/26.0, 2));
@@ -169,17 +172,16 @@ function getXYZ_CMF(wave) {
 
 function XYZto_up_vp(X, Y, Z) {
     let denom = X + 15 * Y + 3 * Z;
-    if (denom === 0) return {u: 0, v: 0};
-    return { u: (4 * X) / denom, v: (9 * Y) / denom };
+    // ⚠️ CORRECCIÓN CLAVE AQUÍ: Chart.js exige que las variables se llamen 'x' e 'y', no 'u' y 'v'
+    if (denom === 0) return {x: 0, y: 0};
+    return { x: (4 * X) / denom, y: (9 * Y) / denom };
 }
 
 function XYZtosRGB(X, Y, Z) {
-    // Matriz D65 XYZ a sRGB Lineal
     let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
     
-    // Aplicar Gamma sRGB
     let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
     return [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
 }
@@ -235,7 +237,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.options.scales.y.max = null; spectroChart.update();
 });
 
-// COLOR ESPECTRAL (El gran cambio)
+// COLOR ESPECTRAL (Corregido el Scatter y los Picos)
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     
@@ -245,35 +247,40 @@ document.getElementById('btnColor').addEventListener('click', () => {
     let X = 0, Y = 0, Z = 0;
     let spectrumVals = [];
     
-    // 1. Calcular distribución (list_1 en Python) e integrar
+    // 1. Calcular distribución y evitar picos infinitos por división por cero
     for (let i = 0; i < 288; i++) {
-        let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
-        val = Math.max(0, val);
+        let num = sampleData[i] - darkData[i];
+        let den = blankData[i] - darkData[i];
+        
+        let val = num / Math.max(1e-4, den);
+        
+        // ⚠️ CORRECCIÓN CLAVE: Limitar el valor máximo para evitar que un ruido aplaste el gráfico
+        val = Math.max(0, Math.min(2.5, val)); 
+        
         spectrumVals.push(val);
 
         let cmf = getXYZ_CMF(nm[i]);
         X += val * cmf.x; Y += val * cmf.y; Z += val * cmf.z;
     }
 
-    // Normalizar
     let sumY = Math.max(1e-4, Y);
     X /= sumY; Y /= sumY; Z /= sumY;
 
-    // 2. Coordenadas y Color
     let coords = XYZto_up_vp(X, Y, Z);
     let srgb = XYZtosRGB(X, Y, Z);
     let rgbStr = `rgb(${Math.round(srgb[0]*255)}, ${Math.round(srgb[1]*255)}, ${Math.round(srgb[2]*255)})`;
 
-    // 3. Actualizar Diagrama de Cromaticidad
+    // 3. Actualizar Diagrama de Cromaticidad (Ahora con coordenadas X e Y)
     chromaticityChart.data.datasets = [
         {
             label: "sRGB Triangle",
-            data: [ {u: 0.4508, v: 0.5229}, {u: 0.1250, v: 0.5625}, {u: 0.1754, v: 0.1579}, {u: 0.4508, v: 0.5229} ],
+            // Coordenadas sRGB pre-calculadas en u' v' (Mapeadas a x, y para Chart.js)
+            data: [ {x: 0.4508, y: 0.5229}, {x: 0.1250, y: 0.5625}, {x: 0.1754, y: 0.1579}, {x: 0.4508, y: 0.5229} ],
             borderColor: "red", backgroundColor: "transparent", showLine: true, pointRadius: 4, type: 'line'
         },
         {
             label: "Muestra",
-            data: [{u: coords.u, v: coords.v}],
+            data: [{x: coords.x, y: coords.y}], // Pasa el punto exacto
             backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
         },
         {
@@ -284,9 +291,12 @@ document.getElementById('btnColor').addEventListener('click', () => {
     ];
     chromaticityChart.update();
 
-    // 4. Actualizar Distribución Espectral (Line chart con gradiente)
-    let ctxDist = document.getElementById('distributionChart').getContext('2d');
-    let gradient = ctxDist.createLinearGradient(0, 0, 400, 0); // Gradiente horizontal
+    // 4. Actualizar Distribución Espectral
+    let canvasDist = document.getElementById('distributionChart');
+    let ctxDist = canvasDist.getContext('2d');
+    
+    // El gradiente ahora se adapta al ancho real del canvas
+    let gradient = ctxDist.createLinearGradient(0, 0, canvasDist.clientWidth, 0); 
     gradient.addColorStop(0, "darkviolet");
     gradient.addColorStop(0.3, "blue");
     gradient.addColorStop(0.5, "green");
