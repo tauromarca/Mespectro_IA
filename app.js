@@ -32,7 +32,7 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. TABLA OFICIAL CIE 1931 CMF (Para precisión exacta)
+// 2. TABLA OFICIAL CIE 1931 CMF
 // ==========================================
 const CIE_CMF = [
     {wl: 380, x: 0.0014, y: 0.0000, z: 0.0065}, {wl: 390, x: 0.0042, y: 0.0001, z: 0.0201},
@@ -65,11 +65,7 @@ function getXYZ_CMF(wave) {
         let p1 = CIE_CMF[i], p2 = CIE_CMF[i+1];
         if (wave >= p1.wl && wave <= p2.wl) {
             let t = (wave - p1.wl) / (p2.wl - p1.wl);
-            return {
-                x: p1.x + t * (p2.x - p1.x),
-                y: p1.y + t * (p2.y - p1.y),
-                z: p1.z + t * (p2.z - p1.z)
-            };
+            return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y), z: p1.z + t * (p2.z - p1.z) };
         }
     }
     return {x: 0, y: 0, z: 0};
@@ -89,7 +85,6 @@ function XYZtosRGB(X, Y, Z) {
     return [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
 }
 
-// Generar los puntos exactos del herradura (Locus Espectral)
 let locusData = [];
 for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getXYZ_CMF(wl);
@@ -116,7 +111,7 @@ let spectroChart = new Chart(ctx, {
     }
 });
 
-// PLUGIN: Dibuja matemáticamente el arcoiris y los números por debajo de Chart.js
+// PLUGIN NATIVO PARA DIBUJAR EL INTERIOR A TODO COLOR DEL DIAGRAMA
 const cieBackgroundPlugin = {
     id: 'cieBackground',
     beforeDatasetsDraw(chart) {
@@ -125,7 +120,7 @@ const cieBackgroundPlugin = {
         let cx = x.getPixelForValue(0.2105); 
         let cy = y.getPixelForValue(0.4739); 
 
-        // Rellenar arcoiris
+        // 1. Dibujar el arcoiris interior
         for (let i = 0; i < locusData.length - 1; i++) {
             let p1 = locusData[i], p2 = locusData[i+1];
             let px1 = x.getPixelForValue(p1.x), py1 = y.getPixelForValue(p1.y);
@@ -136,7 +131,7 @@ const cieBackgroundPlugin = {
             ctx.fillStyle = grad; ctx.fill();
         }
         
-        // Rellenar línea de púrpuras
+        // 2. Línea de púrpuras
         let pF = locusData[0], pL = locusData[locusData.length - 1];
         let pxF = x.getPixelForValue(pF.x), pyF = y.getPixelForValue(pF.y);
         let pxL = x.getPixelForValue(pL.x), pyL = y.getPixelForValue(pL.y);
@@ -145,10 +140,9 @@ const cieBackgroundPlugin = {
         gradP.addColorStop(0, 'white'); gradP.addColorStop(1, 'magenta');
         ctx.fillStyle = gradP; ctx.fill();
 
-        // Borde Negro
+        // 3. Dibujar borde negro exterior
         ctx.beginPath();
-        ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
-        for(let i=1; i<locusData.length; i++) ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
+        for(let i=0; i<locusData.length; i++) ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
         ctx.closePath();
         ctx.lineWidth = 2; ctx.strokeStyle = 'black'; ctx.stroke();
         ctx.restore();
@@ -156,9 +150,9 @@ const cieBackgroundPlugin = {
     afterDatasetsDraw(chart) {
         const { ctx, scales: { x, y } } = chart;
         ctx.save();
-        ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'black'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
-        // Puntos negros y texto
+        // 4. Dibujar los puntos numéricos del contorno
         locusData.forEach(p => {
             if (p.wl % 10 === 0 && p.wl >= 420 && p.wl <= 680) {
                 let px = x.getPixelForValue(p.x), py = y.getPixelForValue(p.y);
@@ -175,7 +169,6 @@ const cieBackgroundPlugin = {
     }
 };
 
-// Fijamos un contenedor cuadrado para que no se deforme
 document.getElementById('chromaticityChart').parentElement.style.height = "350px";
 document.getElementById('chromaticityChart').parentElement.style.width = "350px";
 document.getElementById('chromaticityChart').parentElement.style.margin = "0 auto";
@@ -193,8 +186,8 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
             },
             {
                 label: "Muestra",
-                data: [], // Inicia vacío, se dibuja al calcular
-                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
+                data: [], // Inicia vacío
+                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 6, z: 10
             }
         ] 
     },
@@ -209,7 +202,7 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
 
 let distributionChart = new Chart(document.getElementById('distributionChart').getContext('2d'), {
     type: 'line',
-    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1, pointRadius: 0, fill: true }] },
+    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: true }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: 0 } } }
 });
 
@@ -277,6 +270,7 @@ document.getElementById('btnDark').addEventListener('click', () => { darkData = 
 document.getElementById('btnBlank').addEventListener('click', () => { blankData = [...currentData]; alert("Blanco guardado."); });
 document.getElementById('btnSample').addEventListener('click', () => { sampleData = [...currentData]; alert("Muestra guardada."); });
 
+// ABSORBANCIA
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
@@ -292,7 +286,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
 });
 
 // ==========================================
-// 6. CÁLCULO DE COLOR ESPECTRAL (PRECISIÓN ABSOLUTA)
+// 6. CÁLCULO DE COLOR ESPECTRAL (CORRECCIÓN GRADIENTE)
 // ==========================================
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
@@ -300,7 +294,6 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     let X = 0, Y = 0, Z = 0; let spectrumVals = [];
     
-    // Integración de la muestra usando la Tabla CIE Oficial
     for (let i = 0; i < 288; i++) {
         let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
         val = Math.max(0, Math.min(2.5, val)); 
@@ -318,25 +311,49 @@ document.getElementById('btnColor').addEventListener('click', () => {
     let gamma = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
     let srgb = [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
 
-    // Mueve el punto a su ubicación exacta en el diagrama
     chromaticityChart.data.datasets[1].data = [coords]; 
     chromaticityChart.update();
 
-    let canvasDist = document.getElementById('distributionChart');
-    let ctxDist = canvasDist.getContext('2d');
-    let gradient = ctxDist.createLinearGradient(0, 0, canvasDist.clientWidth, 0); 
-    gradient.addColorStop(0, "darkviolet"); gradient.addColorStop(0.3, "blue"); gradient.addColorStop(0.5, "green"); gradient.addColorStop(0.7, "yellow"); gradient.addColorStop(1, "red");
-    
+    // DIBUJAR GRADIENTE CORRECTAMENTE EN LA GRÁFICA DE DISTRIBUCIÓN
+    // Forzamos un update inicial para que Chart.js calcule la caja del gráfico real (chartArea)
     distributionChart.data.datasets[0].data = spectrumVals;
-    distributionChart.data.datasets[0].backgroundColor = gradient;
     distributionChart.data.datasets[0].borderColor = "black";
     distributionChart.update();
+
+    let chartArea = distributionChart.chartArea;
+    if (chartArea) {
+        let ctxDist = document.getElementById('distributionChart').getContext('2d');
+        let gradient = ctxDist.createLinearGradient(chartArea.left, 0, chartArea.right, 0); 
+        
+        // Mapeamos los colores EXACTOS al ancho del área dibujada
+        let minWl = nm[0];
+        let maxWl = nm[nm.length - 1];
+        let range = maxWl - minWl;
+
+        const colorStops = [
+            {w: 300, c: "#4b0082"}, {w: 400, c: "#8a2be2"}, {w: 450, c: "#0000ff"}, 
+            {w: 490, c: "#00ffff"}, {w: 530, c: "#00ff00"}, {w: 580, c: "#ffff00"}, 
+            {w: 620, c: "#ffa500"}, {w: 680, c: "#ff0000"}, {w: 750, c: "#8b0000"}, {w: 950, c: "#8b0000"}
+        ];
+
+        gradient.addColorStop(0, "#4b0082");
+        gradient.addColorStop(1, "#8b0000");
+
+        colorStops.forEach(s => {
+            if(s.w >= minWl && s.w <= maxWl) {
+                let position = (s.w - minWl) / range;
+                if (position > 0 && position < 1) gradient.addColorStop(position, s.c);
+            }
+        });
+
+        distributionChart.data.datasets[0].backgroundColor = gradient;
+        distributionChart.update(); // Aplicar el gradiente final
+    }
 
     document.getElementById('colorBoxDisplay').style.backgroundColor = `rgb(${Math.round(srgb[0]*255)}, ${Math.round(srgb[1]*255)}, ${Math.round(srgb[2]*255)})`;
     document.getElementById('srgbText').innerText = `SRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
 });
 
-// EXPORTAR
 document.getElementById('btnExport').addEventListener('click', () => {
     if (!sampleData) { alert("Requiere muestra."); return; }
     let csvContent = "data:text/csv;charset=utf-8,Wavelength(nm),Intensity\n";
