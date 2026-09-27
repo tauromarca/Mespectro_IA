@@ -50,15 +50,16 @@
 
         /* VISTAS INTERCAMBIABLES */
         #viewMonitor { display: block; }
+        
+        /* Aumentamos el espacio para el diagrama haciéndolo 1.5 veces más grande que la columna derecha */
         #viewColorAnalysis { 
             display: none; 
-            grid-template-columns: 1fr 1fr; 
+            grid-template-columns: 1.5fr 1fr; 
             grid-template-rows: auto auto;
             gap: 20px;
             height: 100%;
         }
 
-        /* DISEÑO DE LA VISTA DE COLOR */
         .panel { 
             border: 1px solid #eee; border-radius: 8px; padding: 15px; 
             display: flex; flex-direction: column; align-items: center; justify-content: flex-start; 
@@ -69,12 +70,7 @@
         #panelDistribution { grid-column: 2 / 3; grid-row: 1 / 2; }
         #panelColorBox { grid-column: 2 / 3; grid-row: 2 / 3; }
 
-        /* Contenedores para estabilizar Chart.js */
-        .canvas-container {
-            position: relative;
-            height: 350px;
-            width: 100%;
-        }
+        .canvas-container { position: relative; width: 100%; }
 
         #colorBoxDisplay {
             width: 150px; height: 150px; background-color: black;
@@ -120,7 +116,6 @@
     </div>
 
     <div class="main-content">
-        <!-- VISTA 1: MONITOREO / ABSORBANCIA -->
         <div id="viewMonitor">
             <h2 id="chartTitle">Respuesta Espectral</h2>
             <div class="canvas-container" style="height: 450px;">
@@ -128,11 +123,10 @@
             </div>
         </div>
 
-        <!-- VISTA 2: COLOR ESPECTRAL (DIAGRAMAS) -->
         <div id="viewColorAnalysis">
             <div class="panel" id="panelChromaticity">
                 <h3>Diagrama de Cromaticidad CIE1976UCS</h3>
-                <div class="canvas-container">
+                <div class="canvas-container" id="chromaContainer">
                     <canvas id="chromaticityChart"></canvas>
                 </div>
             </div>
