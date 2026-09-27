@@ -25,15 +25,14 @@ function getColorParaOnda(onda) {
 for (let i = 1; i <= 288; i++) {
     let wave = A_0 + (B_1 * i) + (B_2 * Math.pow(i, 2)) + (B_3 * Math.pow(i, 3)) + (B_4 * Math.pow(i, 4)) + (B_5 * Math.pow(i, 5));
     let waveInt = Math.round(wave);
-    nm.push(waveInt);
+    nm.push(waveInt); 
     bgColors.push(getColorParaOnda(waveInt));
 }
 
 // ==========================================
-// 2. TABLAS CIE Y D65 PARA MÁXIMA PRECISIÓN
+// 2. TABLAS CIE Y CONVERSIONES EXACTAS
 // ==========================================
-
-// A. CIE 1931 (USADA EXCLUSIVAMENTE PARA DIBUJAR LA HERRADURA PERFECTA)
+// A. CIE 1931 (SÓLO PARA DIBUJAR LA HERRADURA EXACTA)
 const CIE_1931_CMF = [
     {wl: 380, x: 0.0014, y: 0.0000, z: 0.0065}, {wl: 390, x: 0.0042, y: 0.0001, z: 0.0201}, {wl: 400, x: 0.0143, y: 0.0004, z: 0.0679},
     {wl: 410, x: 0.0435, y: 0.0012, z: 0.2074}, {wl: 420, x: 0.1344, y: 0.0040, z: 0.6456}, {wl: 430, x: 0.2839, y: 0.0116, z: 1.3856},
@@ -58,10 +57,10 @@ function getLocusCMF(wave) {
             return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y), z: p1.z + t * (p2.z - p1.z) };
         }
     }
-    return {x:0, y:0, z:0};
+    return {x: 0, y: 0, z: 0};
 }
 
-// B. CIE 2015 2-DEGREE (USADA PARA CALCULAR LA MUESTRA)
+// B. CIE 2015 2-DEGREE (USADA PARA CALCULAR LA MUESTRA 340-850nm)
 const CIE_2015_CMF = [
     {wl:340,x:0.0000,y:0.0000,z:0.0000}, {wl:360,x:0.0000,y:0.0000,z:0.0000}, {wl:380,x:0.0011,y:0.0000,z:0.0051}, {wl:400,x:0.0416,y:0.0011,z:0.2015},
     {wl:420,x:0.2980,y:0.0113,z:1.4884}, {wl:440,x:0.3557,y:0.0381,z:1.8386}, {wl:460,x:0.1772,y:0.0768,z:1.0021}, {wl:480,x:0.0414,y:0.1837,z:0.3277},
@@ -85,7 +84,7 @@ function getSampleCMF(wave) {
     return {x:0, y:0, z:0};
 }
 
-// C. ILUMINANTE D65 (Clave para que el color sea rojizo, como en Python)
+// C. ILUMINANTE D65 (Tono Rojizo Original)
 const D65 = [
     {w: 340, v: 39.9}, {w: 360, v: 46.6}, {w: 380, v: 50.0}, {w: 400, v: 82.8}, {w: 420, v: 93.4}, {w: 440, v: 104.9}, 
     {w: 460, v: 117.8}, {w: 480, v: 115.9}, {w: 500, v: 109.4}, {w: 520, v: 104.8}, {w: 540, v: 104.4}, {w: 560, v: 100.0}, 
@@ -105,10 +104,9 @@ function getD65(wl) {
     return 100.0;
 }
 
-// FUNCIONES MATEMÁTICAS GLOBALES
 function XYZto_up_vp(X, Y, Z) {
     let denom = X + 15 * Y + 3 * Z;
-    if (denom === 0) return {x:0, y:0};
+    if (denom === 0) return {x: 0.2105, y: 0.4739}; // Blanco Central
     return { x: (4 * X) / denom, y: (9 * Y) / denom };
 }
 
@@ -125,12 +123,10 @@ function XYZto_sRGB(X, Y, Z) {
     return [gamma(r), gamma(g), gamma(b)];
 }
 
-// Convertidor para pintar el fondo de la herradura (Shader)
 function uvToColorHex(u, v) {
     const divisor = 6 * u - 16 * v + 12;
     if (divisor <= 0 || v <= 0) return null;
-    const x = (9 * u) / divisor;
-    const y = (4 * v) / divisor;
+    const x = (9 * u) / divisor, y = (4 * v) / divisor;
     if (y <= 0) return null;
 
     const X = x / y, Y = 1, Z = (1 - x - y) / y;
@@ -153,9 +149,7 @@ function uvToColorHex(u, v) {
     return `rgb(${Math.round(gammaSRGB(r)*255)},${Math.round(gammaSRGB(g)*255)},${Math.round(gammaSRGB(b)*255)})`;
 }
 
-// ==========================================
-// 3. LOCUS ESPECTRAL (La forma de la Herradura CIE 1931)
-// ==========================================
+// 3. Generar la Herradura CIE 1931 exacta
 let locusData = [];
 for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getLocusCMF(wl);
@@ -177,12 +171,12 @@ let spectroChart = new Chart(ctx, {
         datasets: [{ label: 'Intensidad', data: currentData, backgroundColor: bgColors, borderColor: bgColors, borderWidth: 1, barPercentage: 1.0, categoryPercentage: 1.0 }]
     },
     options: {
-        responsive: true, maintainAspectRatio: false, animation: {duration: 0}, plugins: { legend: {display: false} },
-        scales: { x: { title: { display: true, text: 'Longitud de Onda en nm' }, ticks: { maxRotation: 90, minRotation: 90 }, grid: {display: false} }, y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 } }
+        responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, plugins: { legend: { display: false } },
+        scales: { x: { title: { display: true, text: 'Longitud de Onda en nm' }, ticks: { maxRotation: 90, minRotation: 90 }, grid: { display: false } }, y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 } }
     }
 });
 
-// PLUGIN DE FONDO CIE 1976 (Cuadrado Perfecto)
+// PLUGIN NATIVO PARA EL DIAGRAMA DE CROMATICIDAD
 const cieBackgroundPlugin = {
     id: 'cieBackground',
     beforeDatasetsDraw(chart) {
@@ -224,7 +218,7 @@ const cieBackgroundPlugin = {
         ctx.save();
         ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-        // ETIQUETAS EXACTAS A PYTHON
+        // Etiquetas seleccionadas idénticas a Python
         const etiquetasVisibles = [420, 440, 450, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 610, 620, 630, 645, 680];
 
         locusData.forEach(p => {
@@ -257,12 +251,20 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
             {
                 label: "sRGB Triangle",
                 data: [ {x:0.4508, y:0.5229}, {x:0.1250, y:0.5625}, {x:0.1754, y:0.1579}, {x:0.4508, y:0.5229} ],
-                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2.5, pointBackgroundColor: "red", pointRadius: 5
+                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2.5, 
+                pointBackgroundColor: "red", pointBorderColor: "red", pointRadius: 5
             },
             {
                 label: "Muestra",
-                data: [],
-                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
+                data: [], // Inicia vacío, se dibuja al apretar el botón "Color Espectral"
+                
+                // Propiedades específicas y seguras para asegurar que el punto se dibuje
+                pointBackgroundColor: "black", 
+                pointBorderColor: "white", 
+                pointBorderWidth: 2, 
+                pointRadius: 9, 
+                pointHoverRadius: 10,
+                showLine: false
             }
         ]
     },
@@ -276,10 +278,25 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
     }
 });
 
+// DISTRIBUCIÓN ESPECTRAL CON RANGO 340 A 850
 let distributionChart = new Chart(document.getElementById('distributionChart').getContext('2d'), {
     type: 'line',
-    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: true }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display: false} }, scales: { x: {display: false}, y: {display: false, min: 0} } }
+    data: { 
+        datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: true, borderColor: "black" }] 
+    },
+    options: { 
+        responsive: true, maintainAspectRatio: false, 
+        plugins: { legend: {display: false} }, 
+        scales: { 
+            // ⚠️ Aquí forzamos matemáticamente el rango visual de 340 a 850
+            x: { 
+                type: 'linear', position: 'bottom', min: 340, max: 850, 
+                title: { display: true, text: 'Longitud de Onda (nm)' },
+                ticks: { stepSize: 50 }
+            }, 
+            y: { display: false, min: 0 } 
+        } 
+    }
 });
 
 // ==========================================
@@ -316,7 +333,7 @@ function processCSV(file, targetType) {
             }
             document.getElementById('statusPanel').innerHTML = `Blanco: ${blankData ? "✔️" : "❌"}<br>` + `Negro: ${darkData ? "✔️" : "❌"}<br>` + `Muestra: ${sampleData ? "✔️" : "❌"}`;
             alert(`Archivo ${targetType.toUpperCase()} cargado.`);
-        } else alert("Error: El archivo no tiene 288 filas.");
+        } else alert(`Error: El archivo no tiene 288 filas.`);
     }; reader.readAsText(file);
 }
 
@@ -368,16 +385,19 @@ document.getElementById('btnColor').addEventListener('click', () => {
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
 
     let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
-    let spectrumVals = [];
+    
+    // El gráfico de distribución ahora espera un arreglo de coordenadas {x, y}
+    let spectrumValsCoords = [];
 
-    // Integración CIE 2015 + D65
     for (let i = 0; i < 288; i++) {
         let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
         val = Math.max(0, Math.min(2.5, val));
-        spectrumVals.push(val);
+        
+        // Emparejamos explícitamente el valor con su longitud de onda
+        spectrumValsCoords.push({ x: nm[i], y: val });
 
         let cmf = getSampleCMF(nm[i]);
-        let ill = getD65(nm[i]); // Agrega el Iluminante D65
+        let ill = getD65(nm[i]); 
 
         sum_X += val * cmf.x * ill;
         sum_Y += val * cmf.y * ill;
@@ -385,35 +405,44 @@ document.getElementById('btnColor').addEventListener('click', () => {
         ref_Y += cmf.y * ill;
     }
 
-    // Normalizar respecto a Y
     let X = sum_X / Math.max(1e-4, ref_Y);
     let Y = sum_Y / Math.max(1e-4, ref_Y);
     let Z = sum_Z / Math.max(1e-4, ref_Y);
 
     let denom = X + 15 * Y + 3 * Z;
-    let coords = denom === 0 ? {x:0, y:0} : {x:(4 * X) / denom, y:(9 * Y) / denom};
+    let coords = denom === 0 ? {x: 0.2105, y: 0.4739} : {x:(4 * X) / denom, y:(9 * Y) / denom};
 
-    // Convertir a sRGB
     let srgb = XYZto_sRGB(X, Y, Z);
 
-    // Posicionar muestra en el diagrama
+    // 1. Mostrar Punto en Cromaticidad (Con las propiedades fijas y obligatorias)
     chromaticityChart.data.datasets[1].data = [coords];
     chromaticityChart.update();
 
-    // Gradiente de distribución espectral
-    let canvasDist = document.getElementById('distributionChart');
-    let ctxDist = canvasDist.getContext('2d');
-    let gradient = ctxDist.createLinearGradient(0, 0, canvasDist.clientWidth, 0);
+    // 2. Dibujar Gradiente de Distribución en Rango 340-850nm
+    distributionChart.data.datasets[0].data = spectrumValsCoords;
+    distributionChart.update(); 
 
-    gradient.addColorStop(0, "darkviolet"); gradient.addColorStop(0.3, "blue");
-    gradient.addColorStop(0.5, "green"); gradient.addColorStop(0.7, "yellow"); gradient.addColorStop(1, "red");
+    let chartArea = distributionChart.chartArea;
+    if (chartArea) {
+        let ctxDist = document.getElementById('distributionChart').getContext('2d');
+        let gradient = ctxDist.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
 
-    distributionChart.data.datasets[0].data = spectrumVals;
-    distributionChart.data.datasets[0].backgroundColor = gradient;
-    distributionChart.data.datasets[0].borderColor = "black";
-    distributionChart.update();
+        // Mapeo exacto del arcoiris al rango del eje X (340 a 850)
+        const mapWl = (wl) => Math.max(0, Math.min(1, (wl - 340) / (850 - 340)));
 
-    // Color final en pantalla
+        gradient.addColorStop(mapWl(340), "black");
+        gradient.addColorStop(mapWl(380), "darkviolet");
+        gradient.addColorStop(mapWl(440), "blue");
+        gradient.addColorStop(mapWl(510), "green");
+        gradient.addColorStop(mapWl(580), "yellow");
+        gradient.addColorStop(mapWl(645), "red");
+        gradient.addColorStop(mapWl(780), "darkred");
+        gradient.addColorStop(mapWl(850), "black");
+
+        distributionChart.data.datasets[0].backgroundColor = gradient;
+        distributionChart.update();
+    }
+
     let r_disp = Math.max(0, Math.min(255, Math.round(srgb[0] * 255)));
     let g_disp = Math.max(0, Math.min(255, Math.round(srgb[1] * 255)));
     let b_disp = Math.max(0, Math.min(255, Math.round(srgb[2] * 255)));
