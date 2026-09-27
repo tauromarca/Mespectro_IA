@@ -32,7 +32,7 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. TABLA OFICIAL CIE 1931 CMF
+// 2. TABLA OFICIAL CIE 1931 CMF Y CONVERSIONES
 // ==========================================
 const CIE_CMF = [
     {wl: 380, x: 0.0014, y: 0.0000, z: 0.0065}, {wl: 390, x: 0.0042, y: 0.0001, z: 0.0201}, {wl: 400, x: 0.0143, y: 0.0004, z: 0.0679},
@@ -45,15 +45,12 @@ const CIE_CMF = [
     {wl: 590, x: 1.0263, y: 0.7570, z: 0.0011}, {wl: 600, x: 1.0622, y: 0.6310, z: 0.0008}, {wl: 610, x: 1.0026, y: 0.5030, z: 0.0003},
     {wl: 620, x: 0.8544, y: 0.3810, z: 0.0002}, {wl: 630, x: 0.6424, y: 0.2650, z: 0.0000}, {wl: 640, x: 0.4479, y: 0.1750, z: 0.0000},
     {wl: 650, x: 0.2835, y: 0.1070, z: 0.0000}, {wl: 660, x: 0.1649, y: 0.0610, z: 0.0000}, {wl: 670, x: 0.0874, y: 0.0320, z: 0.0000},
-    {wl: 680, x: 0.0468, y: 0.0170, z: 0.0000}, {wl: 690, x: 0.0227, y: 0.0082, z: 0.0000}, {wl: 700, x: 0.0114, y: 0.0041, z: 0.0000},
-    {wl: 710, x: 0.0058, y: 0.0021, z: 0.0000}, {wl: 720, x: 0.0029, y: 0.0010, z: 0.0000}, {wl: 730, x: 0.0014, y: 0.0005, z: 0.0000},
-    {wl: 740, x: 0.0007, y: 0.0003, z: 0.0000}, {wl: 750, x: 0.0003, y: 0.0001, z: 0.0000}, {wl: 760, x: 0.0002, y: 0.0001, z: 0.0000},
-    {wl: 770, x: 0.0001, y: 0.0000, z: 0.0000}, {wl: 780, x: 0.0000, y: 0.0000, z: 0.0000}
+    {wl: 680, x: 0.0468, y: 0.0170, z: 0.0000}, {wl: 690, x: 0.0227, y: 0.0082, z: 0.0000}, {wl: 700, x: 0.0114, y: 0.0041, z: 0.0000}
 ];
 
 function getXYZ_CMF(wave) {
     if (wave <= 380) return CIE_CMF[0];
-    if (wave >= 780) return CIE_CMF[CIE_CMF.length - 1];
+    if (wave >= 700) return CIE_CMF[CIE_CMF.length - 1];
     for (let i = 0; i < CIE_CMF.length - 1; i++) {
         let p1 = CIE_CMF[i], p2 = CIE_CMF[i+1];
         if (wave >= p1.wl && wave <= p2.wl) {
@@ -70,24 +67,14 @@ function XYZto_up_vp(X, Y, Z) {
     return { x: (4 * X) / denom, y: (9 * Y) / denom }; 
 }
 
-function XYZtosRGB(X, Y, Z) {
-    let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
-    let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
-    let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
-    let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    return [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
-}
-
-// Convertir coordenada (u', v') directamente a un color RGB visual (para rellenar píxel por píxel)
-function uvToRGBColor(u, v) {
+// Convertir coordenadas (u', v') de la pantalla a RGB visual para rellenar el gráfico
+function uvToRGB(u, v) {
     let divisor = 6 * u - 16 * v + 12;
     if (divisor === 0) return [0,0,0];
-    
     let x = (9 * u) / divisor;
     let y = (4 * v) / divisor;
-    if (y === 0) return [0,0,0];
+    if (y <= 0) return [0,0,0];
 
-    // Asumimos Y = 1 (Luminosidad máxima) para los colores del diagrama
     let X = x / y;
     let Y = 1.0;
     let Z = (1 - x - y) / y;
@@ -96,21 +83,21 @@ function uvToRGBColor(u, v) {
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
 
-    // Desaturar (agregar blanco) si está fuera del Gamut para lograr la transición suave
+    // Difuminado suave para los colores fuera de gama (lograr ese blanco central)
     let min = Math.min(r, g, b);
     if (min < 0) { r -= min; g -= min; b -= min; }
-
-    // Normalizar
     let max = Math.max(r, g, b);
-    if (max > 0) { r /= max; g /= max; b /= max; } 
-    else { return [0,0,0]; }
+    if (max > 0) { r /= max; g /= max; b /= max; }
 
-    // Corrección Gamma
     let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    return [Math.round(gamma(r)*255), Math.round(gamma(g)*255), Math.round(gamma(b)*255)];
+    return [
+        Math.max(0, Math.min(255, Math.round(gamma(r)*255))),
+        Math.max(0, Math.min(255, Math.round(gamma(g)*255))),
+        Math.max(0, Math.min(255, Math.round(gamma(b)*255)))
+    ];
 }
 
-// Generar los puntos exactos del herradura (Locus Espectral)
+// Generar puntos del contorno (Locus)
 let locusData = [];
 for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getXYZ_CMF(wl);
@@ -119,7 +106,7 @@ for (let wl = 380; wl <= 700; wl += 5) {
 }
 
 // ==========================================
-// 3. VARIABLES DE ESTADO Y GRÁFICOS
+// 3. ESTADO GLOBAL
 // ==========================================
 let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
@@ -137,7 +124,9 @@ let spectroChart = new Chart(ctx, {
     }
 });
 
-// PLUGIN: Renderizador Pixel a Pixel para el fondo CIE
+// ==========================================
+// 4. PLUGIN NATIVO PARA EL DIAGRAMA DE CROMATICIDAD
+// ==========================================
 const cieBackgroundPlugin = {
     id: 'cieBackground',
     beforeDatasetsDraw(chart) {
@@ -145,21 +134,19 @@ const cieBackgroundPlugin = {
         if (!chartArea) return;
 
         ctx.save();
-
-        // 1. Crear la máscara (Clip) con la forma de la herradura
+        // 1. Recortar la forma de la herradura para no pintar fuera
         ctx.beginPath();
         ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
         for(let i=1; i<locusData.length; i++) {
             ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
         }
         ctx.closePath();
-        ctx.clip(); // Corta todo lo que se dibuje por fuera
+        ctx.clip(); 
 
-        // 2. Rellenar Píxel por Píxel (Shader 2D) para crear el centro blanco y difuminado exacto
+        // 2. Renderizar los colores píxel por píxel (Shader)
         let width = chartArea.right - chartArea.left;
         let height = chartArea.bottom - chartArea.top;
-        
-        // Caché de la imagen para que la computadora no sufra al redibujar
+
         if (!chart.cieBgCache || chart.cieBgCache.w !== width || chart.cieBgCache.h !== height) {
             let offCanvas = document.createElement('canvas');
             offCanvas.width = width;
@@ -173,47 +160,54 @@ const cieBackgroundPlugin = {
                     let valU = x.getValueForPixel(px + chartArea.left);
                     let valV = y.getValueForPixel(py + chartArea.top);
                     
-                    let rgb = uvToRGBColor(valU, valV);
+                    let rgb = uvToRGB(valU, valV);
 
                     let idx = (py * width + px) * 4;
                     data[idx] = rgb[0];     // Red
                     data[idx+1] = rgb[1];   // Green
                     data[idx+2] = rgb[2];   // Blue
-                    data[idx+3] = 255;      // Alpha (Opacidad)
+                    data[idx+3] = 255;      // Opacidad
                 }
             }
             offCtx.putImageData(imgData, 0, 0);
             chart.cieBgCache = { canvas: offCanvas, w: width, h: height };
         }
 
-        // Pega la imagen generada en el canvas principal
         ctx.drawImage(chart.cieBgCache.canvas, chartArea.left, chartArea.top);
         ctx.restore();
 
-        // 3. Dibujar borde negro exterior de la herradura
+        // 3. Dibujar borde negro sólido exterior
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
-        for(let i=1; i<locusData.length; i++) ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
+        for(let i=1; i<locusData.length; i++) {
+            ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
+        }
         ctx.closePath();
-        ctx.lineWidth = 2; ctx.strokeStyle = 'black'; ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'black';
+        ctx.stroke();
         ctx.restore();
     },
     afterDatasetsDraw(chart) {
         const { ctx, scales: { x, y } } = chart;
         ctx.save();
-        ctx.fillStyle = 'black'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
-        // Puntos negros y texto
+        // 4. Seleccionar los textos para que no se amontonen
+        const etiquetasVisibles = [420, 440, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 620, 650];
+
         locusData.forEach(p => {
-            if (p.wl % 10 === 0 && p.wl >= 420 && p.wl <= 680) {
+            if (etiquetasVisibles.includes(p.wl)) {
                 let px = x.getPixelForValue(p.x), py = y.getPixelForValue(p.y);
                 ctx.beginPath(); ctx.arc(px, py, 3, 0, 2*Math.PI); ctx.fill();
+                
                 let ox = 0, oy = 0;
-                if (p.wl < 500) { ox = -14; oy = 0; }
-                else if (p.wl < 540) { ox = -10; oy = -10; }
-                else if (p.wl < 600) { ox = 0; oy = -10; }
-                else { ox = 12; oy = -8; }
+                if (p.wl < 500) { ox = -14; oy = 2; }
+                else if (p.wl < 530) { ox = -12; oy = -10; }
+                else if (p.wl < 580) { ox = 0; oy = -12; }
+                else { ox = 14; oy = -8; }
+                
                 ctx.fillText(p.wl, px + ox, py + oy);
             }
         });
@@ -221,9 +215,8 @@ const cieBackgroundPlugin = {
     }
 };
 
-// Fijamos un contenedor más grande y perfectamente cuadrado (450x450 px)
-document.getElementById('chromaContainer').style.height = "450px";
-document.getElementById('chromaContainer').style.width = "450px";
+document.getElementById('chromaContainer').style.height = "380px";
+document.getElementById('chromaContainer').style.width = "380px";
 document.getElementById('chromaContainer').style.margin = "0 auto";
 
 let chromaticityChart = new Chart(document.getElementById('chromaticityChart').getContext('2d'), {
@@ -235,12 +228,12 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
                 label: "sRGB Triangle",
                 data: [ {x: 0.4508, y: 0.5229}, {x: 0.1250, y: 0.5625}, {x: 0.1754, y: 0.1579}, {x: 0.4508, y: 0.5229} ],
                 borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2, 
-                pointBackgroundColor: "red", pointRadius: 4
+                pointBackgroundColor: "red", pointRadius: 5
             },
             {
                 label: "Muestra",
                 data: [], // Inicia vacío
-                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
+                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
             }
         ] 
     },
@@ -249,6 +242,9 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
         scales: {
             x: { type: 'linear', position: 'bottom', min: -0.1, max: 0.7, title: { display: true, text: "CIE u'" } },
             y: { type: 'linear', min: -0.1, max: 0.7, title: { display: true, text: "CIE v'" } }
+        },
+        plugins: { 
+            legend: { position: 'top', labels: { usePointStyle: true } }
         }
     }
 });
@@ -260,7 +256,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
 });
 
 // ==========================================
-// 4. LÓGICA DE MANEJO DE ARCHIVOS Y VISTAS
+// 5. LÓGICA DE MANEJO DE ARCHIVOS Y BOTONES
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -301,9 +297,6 @@ document.getElementById('fileDark').addEventListener('change', function() { if(t
 document.getElementById('fileBlank').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'blank'); this.value = null; });
 document.getElementById('fileSample').addEventListener('change', function() { if(this.files[0]) processCSV(this.files[0], 'sample'); this.value = null; });
 
-// ==========================================
-// 5. EVENTOS BOTONES PRINCIPALES
-// ==========================================
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true; setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
     spectroChart.config.type = 'bar'; spectroChart.data.datasets[0].backgroundColor = bgColors; spectroChart.data.datasets[0].borderColor = bgColors; spectroChart.options.scales.y.max = 1050;
@@ -323,7 +316,6 @@ document.getElementById('btnDark').addEventListener('click', () => { darkData = 
 document.getElementById('btnBlank').addEventListener('click', () => { blankData = [...currentData]; alert("Blanco guardado."); });
 document.getElementById('btnSample').addEventListener('click', () => { sampleData = [...currentData]; alert("Muestra guardada."); });
 
-// ABSORBANCIA
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
@@ -338,16 +330,12 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.options.scales.y.max = null; spectroChart.update();
 });
 
-// ==========================================
-// 6. CÁLCULO DE COLOR ESPECTRAL
-// ==========================================
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis'); 
 
     let X = 0, Y = 0, Z = 0; let spectrumVals = [];
     
-    // Integración de la muestra usando la Tabla CIE Oficial
     for (let i = 0; i < 288; i++) {
         let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
         val = Math.max(0, Math.min(2.5, val)); 
@@ -365,7 +353,6 @@ document.getElementById('btnColor').addEventListener('click', () => {
     let gamma = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
     let srgb = [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
 
-    // Mueve el punto a su ubicación exacta en el diagrama
     chromaticityChart.data.datasets[1].data = [coords]; 
     chromaticityChart.update();
 
@@ -383,7 +370,6 @@ document.getElementById('btnColor').addEventListener('click', () => {
     document.getElementById('srgbText').innerText = `SRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
 });
 
-// EXPORTAR
 document.getElementById('btnExport').addEventListener('click', () => {
     if (!sampleData) { alert("Requiere muestra."); return; }
     let csvContent = "data:text/csv;charset=utf-8,Wavelength(nm),Intensity\n";
