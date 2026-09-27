@@ -32,7 +32,7 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. TABLA OFICIAL CIE 1931 CMF Y CONVERSIONES
+// 2. TABLAS CIE Y CONVERSIÓN SRGB EXACTA
 // ==========================================
 const CIE_CMF = [
     {wl: 380, x: 0.0014, y: 0.0000, z: 0.0065}, {wl: 390, x: 0.0042, y: 0.0001, z: 0.0201}, {wl: 400, x: 0.0143, y: 0.0004, z: 0.0679},
@@ -67,37 +67,51 @@ function XYZto_up_vp(X, Y, Z) {
     return { x: (4 * X) / denom, y: (9 * Y) / denom }; 
 }
 
-// Convertir coordenadas (u', v') de la pantalla a RGB visual para rellenar el gráfico
-function uvToRGB(u, v) {
+// Convertir XYZ a sRGB (Matriz Oficial D65)
+function XYZto_sRGB(X, Y, Z) {
+    let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
+    let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
+    let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+    
+    // Función Gamma para sRGB
+    let gamma = (c) => {
+        let abs_c = Math.abs(c);
+        let res = abs_c <= 0.0031308 ? 12.92 * abs_c : 1.055 * Math.pow(abs_c, 1 / 2.4) - 0.055;
+        return c < 0 ? -res : res;
+    };
+    
+    return [gamma(r), gamma(g), gamma(b)];
+}
+
+// Renderizador Pixel a Pixel seguro (Para el diagrama)
+function uvToColorHex(u, v) {
     let divisor = 6 * u - 16 * v + 12;
-    if (divisor === 0) return [0,0,0];
+    if (divisor === 0) return null;
     let x = (9 * u) / divisor;
     let y = (4 * v) / divisor;
-    if (y <= 0) return [0,0,0];
+    if (y <= 0) return null;
 
     let X = x / y;
     let Y = 1.0;
     let Z = (1 - x - y) / y;
 
-    let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
-    let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
-    let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+    let srgb = XYZto_sRGB(X, Y, Z);
+    let r = srgb[0], g = srgb[1], b = srgb[2];
 
-    // Difuminado suave para los colores fuera de gama (lograr ese blanco central)
+    // Difuminado (Desaturación) para mantener los colores dentro de la zona visible de la pantalla
     let min = Math.min(r, g, b);
     if (min < 0) { r -= min; g -= min; b -= min; }
     let max = Math.max(r, g, b);
     if (max > 0) { r /= max; g /= max; b /= max; }
 
-    let gamma = (c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    return [
-        Math.max(0, Math.min(255, Math.round(gamma(r)*255))),
-        Math.max(0, Math.min(255, Math.round(gamma(g)*255))),
-        Math.max(0, Math.min(255, Math.round(gamma(b)*255)))
-    ];
+    r = Math.max(0, Math.min(255, Math.round(r * 255)));
+    g = Math.max(0, Math.min(255, Math.round(g * 255)));
+    b = Math.max(0, Math.min(255, Math.round(b * 255)));
+    
+    return `rgb(${r},${g},${b})`;
 }
 
-// Generar puntos del contorno (Locus)
+// Locus Espectral
 let locusData = [];
 for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getXYZ_CMF(wl);
@@ -111,6 +125,7 @@ for (let wl = 380; wl <= 700; wl += 5) {
 let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 
+// Gráfico Monitor
 const ctx = document.getElementById('spectroChart').getContext('2d');
 let spectroChart = new Chart(ctx, {
     type: 'bar',
@@ -125,7 +140,7 @@ let spectroChart = new Chart(ctx, {
 });
 
 // ==========================================
-// 4. PLUGIN NATIVO PARA EL DIAGRAMA DE CROMATICIDAD
+// 4. PLUGIN CIE 1976 (A PRUEBA DE RESOLUCIÓN)
 // ==========================================
 const cieBackgroundPlugin = {
     id: 'cieBackground',
@@ -134,57 +149,35 @@ const cieBackgroundPlugin = {
         if (!chartArea) return;
 
         ctx.save();
-        // 1. Recortar la forma de la herradura para no pintar fuera
+        // 1. Recortar la Herradura
         ctx.beginPath();
         ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
-        for(let i=1; i<locusData.length; i++) {
-            ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
-        }
+        for(let i=1; i<locusData.length; i++) ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
         ctx.closePath();
         ctx.clip(); 
 
-        // 2. Renderizar los colores píxel por píxel (Shader)
-        let width = chartArea.right - chartArea.left;
-        let height = chartArea.bottom - chartArea.top;
-
-        if (!chart.cieBgCache || chart.cieBgCache.w !== width || chart.cieBgCache.h !== height) {
-            let offCanvas = document.createElement('canvas');
-            offCanvas.width = width;
-            offCanvas.height = height;
-            let offCtx = offCanvas.getContext('2d');
-            let imgData = offCtx.createImageData(width, height);
-            let data = imgData.data;
-
-            for (let py = 0; py < height; py++) {
-                for (let px = 0; px < width; px++) {
-                    let valU = x.getValueForPixel(px + chartArea.left);
-                    let valV = y.getValueForPixel(py + chartArea.top);
-                    
-                    let rgb = uvToRGB(valU, valV);
-
-                    let idx = (py * width + px) * 4;
-                    data[idx] = rgb[0];     // Red
-                    data[idx+1] = rgb[1];   // Green
-                    data[idx+2] = rgb[2];   // Blue
-                    data[idx+3] = 255;      // Opacidad
+        // 2. Pintar Cromaticidad Interna (Bloques de 3x3px para no fallar con resoluciones)
+        let step = 3;
+        for (let py = chartArea.top; py < chartArea.bottom; py += step) {
+            for (let px = chartArea.left; px < chartArea.right; px += step) {
+                let valU = x.getValueForPixel(px);
+                let valV = y.getValueForPixel(py);
+                let color = uvToColorHex(valU, valV);
+                if (color) {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(px, py, step+0.5, step+0.5);
                 }
             }
-            offCtx.putImageData(imgData, 0, 0);
-            chart.cieBgCache = { canvas: offCanvas, w: width, h: height };
         }
-
-        ctx.drawImage(chart.cieBgCache.canvas, chartArea.left, chartArea.top);
         ctx.restore();
 
-        // 3. Dibujar borde negro sólido exterior
+        // 3. Dibujar borde exterior negro grueso
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
-        for(let i=1; i<locusData.length; i++) {
-            ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
-        }
+        for(let i=1; i<locusData.length; i++) ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
         ctx.closePath();
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = 'black';
         ctx.stroke();
         ctx.restore();
@@ -194,20 +187,18 @@ const cieBackgroundPlugin = {
         ctx.save();
         ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
-        // 4. Seleccionar los textos para que no se amontonen
-        const etiquetasVisibles = [420, 440, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 620, 650];
-
+        // Puntos de longitud de onda perimetrales
+        const etiquetasVisibles = [420, 440, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 620, 680];
         locusData.forEach(p => {
             if (etiquetasVisibles.includes(p.wl)) {
                 let px = x.getPixelForValue(p.x), py = y.getPixelForValue(p.y);
                 ctx.beginPath(); ctx.arc(px, py, 3, 0, 2*Math.PI); ctx.fill();
                 
                 let ox = 0, oy = 0;
-                if (p.wl < 500) { ox = -14; oy = 2; }
-                else if (p.wl < 530) { ox = -12; oy = -10; }
-                else if (p.wl < 580) { ox = 0; oy = -12; }
+                if (p.wl <= 470) { ox = -14; oy = 0; }
+                else if (p.wl <= 520) { ox = -16; oy = 0; }
+                else if (p.wl <= 560) { ox = 0; oy = -12; }
                 else { ox = 14; oy = -8; }
-                
                 ctx.fillText(p.wl, px + ox, py + oy);
             }
         });
@@ -215,8 +206,9 @@ const cieBackgroundPlugin = {
     }
 };
 
-document.getElementById('chromaContainer').style.height = "380px";
-document.getElementById('chromaContainer').style.width = "380px";
+// Fijamos contenedor Cuadrado Perfecto
+document.getElementById('chromaContainer').style.height = "400px";
+document.getElementById('chromaContainer').style.width = "400px";
 document.getElementById('chromaContainer').style.margin = "0 auto";
 
 let chromaticityChart = new Chart(document.getElementById('chromaticityChart').getContext('2d'), {
@@ -227,13 +219,13 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
             {
                 label: "sRGB Triangle",
                 data: [ {x: 0.4508, y: 0.5229}, {x: 0.1250, y: 0.5625}, {x: 0.1754, y: 0.1579}, {x: 0.4508, y: 0.5229} ],
-                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2, 
+                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2.5, 
                 pointBackgroundColor: "red", pointRadius: 5
             },
             {
                 label: "Muestra",
-                data: [], // Inicia vacío
-                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8
+                data: [], 
+                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
             }
         ] 
     },
@@ -243,9 +235,7 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
             x: { type: 'linear', position: 'bottom', min: -0.1, max: 0.7, title: { display: true, text: "CIE u'" } },
             y: { type: 'linear', min: -0.1, max: 0.7, title: { display: true, text: "CIE v'" } }
         },
-        plugins: { 
-            legend: { position: 'top', labels: { usePointStyle: true } }
-        }
+        plugins: { legend: { position: 'top', labels: { usePointStyle: true } } }
     }
 });
 
@@ -256,7 +246,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
 });
 
 // ==========================================
-// 5. LÓGICA DE MANEJO DE ARCHIVOS Y BOTONES
+// 5. MANEJO DE VISTAS Y DATOS
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -330,12 +320,16 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.options.scales.y.max = null; spectroChart.update();
 });
 
+// ==========================================
+// 6. CÁLCULO DE COLOR sRGB
+// ==========================================
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis'); 
 
     let X = 0, Y = 0, Z = 0; let spectrumVals = [];
     
+    // Integración Matemática
     for (let i = 0; i < 288; i++) {
         let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
         val = Math.max(0, Math.min(2.5, val)); 
@@ -349,13 +343,14 @@ document.getElementById('btnColor').addEventListener('click', () => {
     let denom = X + 15 * Y + 3 * Z;
     let coords = denom === 0 ? {x:0, y:0} : {x: (4 * X) / denom, y: (9 * Y) / denom};
     
-    let r = 3.2406 * X - 1.5372 * Y - 0.4986 * Z, g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z, b = 0.0557 * X - 0.2040 * Y + 1.0570 * Z;
-    let gamma = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    let srgb = [Math.max(0, Math.min(1, gamma(r))), Math.max(0, Math.min(1, gamma(g))), Math.max(0, Math.min(1, gamma(b)))];
+    // Convertir a sRGB explícitamente
+    let srgb = XYZto_sRGB(X, Y, Z);
 
+    // Posicionar Muestra
     chromaticityChart.data.datasets[1].data = [coords]; 
     chromaticityChart.update();
 
+    // Gradiente en la Distribución
     let canvasDist = document.getElementById('distributionChart');
     let ctxDist = canvasDist.getContext('2d');
     let gradient = ctxDist.createLinearGradient(0, 0, canvasDist.clientWidth, 0); 
@@ -366,8 +361,13 @@ document.getElementById('btnColor').addEventListener('click', () => {
     distributionChart.data.datasets[0].borderColor = "black";
     distributionChart.update();
 
-    document.getElementById('colorBoxDisplay').style.backgroundColor = `rgb(${Math.round(srgb[0]*255)}, ${Math.round(srgb[1]*255)}, ${Math.round(srgb[2]*255)})`;
-    document.getElementById('srgbText').innerText = `SRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
+    // Color final en pantalla
+    let r_disp = Math.max(0, Math.min(255, Math.round(srgb[0]*255)));
+    let g_disp = Math.max(0, Math.min(255, Math.round(srgb[1]*255)));
+    let b_disp = Math.max(0, Math.min(255, Math.round(srgb[2]*255)));
+
+    document.getElementById('colorBoxDisplay').style.backgroundColor = `rgb(${r_disp}, ${g_disp}, ${b_disp})`;
+    document.getElementById('srgbText').innerText = `sRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
 });
 
 document.getElementById('btnExport').addEventListener('click', () => {
