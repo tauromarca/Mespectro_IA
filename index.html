@@ -3,149 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini Espectrómetro Espectro-IA</title>
+    <title>Analizador de Espectros (SQLite Web)</title>
+    <!-- Chart.js para los gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SQL.js para procesar la base de datos SQLite en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f4f9;
+            background-color: #f4f6f9;
             margin: 0;
             padding: 20px;
-            display: flex;
+            color: #333;
         }
-        .sidebar {
-            width: 250px;
-            background-color: #2c3e50;
-            color: white;
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            overflow-y: auto;
-            max-height: 95vh;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .sidebar h2 { font-size: 16px; border-bottom: 1px solid #7f8c8d; padding-bottom: 8px; margin-top: 25px; }
-        .sidebar h2:first-child { margin-top: 0; }
-        
-        .btn {
-            display: block; width: 100%; padding: 8px; margin: 8px 0;
-            background-color: #f39c12; color: white; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold;
+        h1 { text-align: center; color: #2c3e50; }
+        .control-panel {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
         }
-        .btn:hover { background-color: #e67e22; }
-        .btn-blue { background-color: #2980b9; }
-        .btn-blue:hover { background-color: #3498db; }
-        .btn-green { background-color: #27ae60; }
-        .btn-green:hover { background-color: #2ecc71; }
-        .btn-danger { background-color: #c0392b; }
-        
-        .main-content {
-            flex-grow: 1; margin-left: 20px;
-            background-color: white; padding: 20px;
-            border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
+        .box {
+            background: #eef2f7;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dcdde1;
         }
-        
-        .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; background: #34495e; padding: 10px; border-radius: 5px; }
-
-        /* VISTAS INTERCAMBIABLES */
-        #viewMonitor { display: block; }
-        
-        /* Aumentamos el espacio para el diagrama haciéndolo 1.5 veces más grande que la columna derecha */
-        #viewColorAnalysis { 
-            display: none; 
-            grid-template-columns: 1.5fr 1fr; 
-            grid-template-rows: auto auto;
-            gap: 20px;
-            height: 100%;
+        .box h3 { margin-top: 0; color: #2980b9; margin-bottom: 10px; font-size: 16px; }
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .form-row input, .form-row select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex: 1; }
+        button {
+            background-color: #3498db; color: white; border: none; padding: 10px;
+            border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;
         }
-
-        .panel { 
-            border: 1px solid #eee; border-radius: 8px; padding: 15px; 
-            display: flex; flex-direction: column; align-items: center; justify-content: flex-start; 
-        }
-        .panel h3 { margin-top: 0; font-size: 15px; color: #333; margin-bottom: 10px;}
+        button:hover { background-color: #2980b9; }
+        button.orange { background-color: #e67e22; }
+        button.orange:hover { background-color: #d35400; }
+        button.green { background-color: #2ecc71; }
+        button.purple { background-color: #9b59b6; width: 100%; margin-top: 10px; }
         
-        #panelChromaticity { grid-column: 1 / 2; grid-row: 1 / 3; }
-        #panelDistribution { grid-column: 2 / 3; grid-row: 1 / 2; }
-        #panelColorBox { grid-column: 2 / 3; grid-row: 2 / 3; }
-
-        .canvas-container { position: relative; width: 100%; }
-
-        #colorBoxDisplay {
-            width: 150px; height: 150px; background-color: black;
-            border: 1px solid #ccc; margin: 10px 0;
-        }
-        .srgb-val { background: gray; color: white; padding: 5px 10px; font-family: monospace; font-size: 14px; margin-top: 10px; }
-        
-        canvas { width: 100% !important; height: 100% !important; }
+        .chart-container { position: relative; margin: auto; height: 40vh; width: 100%; }
     </style>
 </head>
 <body>
 
-    <div class="sidebar">
-        <h2>🔴 Control en Vivo</h2>
-        <button class="btn" id="btnMonitor">Iniciar Monitoreo</button>
-        <button class="btn" id="btnDark">Grabar Negro (Vivo)</button>
-        <button class="btn" id="btnBlank">Grabar Blanco (Vivo)</button>
-        <button class="btn" id="btnSample">Grabar Muestra (Vivo)</button>
-        
-        <h2>📁 Cargar Archivos CSV</h2>
-        <input type="file" id="fileDark" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileDark').click()">📥 Subir Negro</button>
+<div class="container">
+    <h1>Analizador de Espectros (SQLite)</h1>
 
-        <input type="file" id="fileBlank" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileBlank').click()">📥 Subir Blanco</button>
+    <div class="control-panel">
         
-        <input type="file" id="fileSample" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileSample').click()">📥 Subir Muestra</button>
-
-        <h2>📊 Análisis</h2>
-        <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
-        <button class="btn btn-blue" id="btnColor">Color Espectral</button>
-        <button class="btn btn-blue" id="btnExport">Exportar Muestra CSV</button>
-        
-        <button class="btn btn-danger" id="btnStop">Detener / Limpiar</button>
-
-        <div class="status" id="statusPanel">
-            <strong>Estado de Datos:</strong><br><br>
-            Blanco: ❌ Vacío<br>
-            Negro: ❌ Vacío<br>
-            Muestra: ❌ Vacía
+        <!-- SECCIÓN 1: CARGAR LA BASE DE DATOS -->
+        <div class="box">
+            <h3>📂 1. Cargar Base de Datos (muestras_espectro.db)</h3>
+            <input type="file" id="file-db" accept=".db,.sqlite">
+            <button class="purple" onclick="descargarBD()">💾 Descargar BD Actualizada (Guardar cambios locales)</button>
         </div>
+
+        <!-- SECCIÓN 2: BUSCAR Y CARGAR REGISTROS EXISTENTES -->
+        <div class="box">
+            <h3>🔍 2. Buscar y Visualizar desde Base de Datos</h3>
+            <div class="form-row">
+                <select id="select-tabla-buscar">
+                    <option value="blancos">Blancos</option>
+                    <option value="negros">Negros</option>
+                    <option value="muestras">Muestras</option>
+                </select>
+                <button onclick="listarRegistros()">Listar Registros</button>
+            </div>
+            <div class="form-row">
+                <select id="select-registros"><option>-- Sin registros cargados --</option></select>
+                <button class="orange" onclick="cargarRegistroAlGrafico()">⬇️ Cargar al Gráfico</button>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: CONTROL DE HARDWARE Y NUEVA LECTURA -->
+        <div class="box">
+            <h3>📡 3. Lectura de Hardware</h3>
+            <div class="form-row">
+                <button id="btn-conectar" class="green">Conectar Hardware</button>
+                <button id="btn-enviar" class="orange">Simular / Leer Hardware (288 datos)</button>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 4: GUARDAR NUEVA LECTURA EN LA BD -->
+        <div class="box">
+            <h3>💾 4. Grabar Lectura en Base de Datos</h3>
+            <div class="form-row">
+                <input type="text" id="input-nombre" placeholder="Nombre (ej. Lote_1)">
+                <input type="number" id="input-codigo" placeholder="Cód. Fermentación">
+                <input type="number" step="0.01" id="input-ph" placeholder="pH">
+                <input type="number" step="0.001" id="input-densidad" placeholder="Densidad">
+                <input type="number" step="0.1" id="input-alcohol" placeholder="Alcohol">
+            </div>
+            <div class="form-row">
+                <button onclick="grabarRegistroDB('negros')">Grabar como Negro</button>
+                <button onclick="grabarRegistroDB('blancos')">Grabar como Blanco</button>
+                <button onclick="grabarRegistroDB('muestras')">Grabar como Muestra</button>
+            </div>
+        </div>
+
     </div>
 
-    <div class="main-content">
-        <div id="viewMonitor">
-            <h2 id="chartTitle">Respuesta Espectral</h2>
-            <div class="canvas-container" style="height: 450px;">
-                <canvas id="spectroChart"></canvas>
-            </div>
-        </div>
-
-        <div id="viewColorAnalysis">
-            <div class="panel" id="panelChromaticity">
-                <h3>Diagrama de Cromaticidad CIE1976UCS</h3>
-                <div class="canvas-container" id="chromaContainer">
-                    <canvas id="chromaticityChart"></canvas>
-                </div>
-            </div>
-            
-            <div class="panel" id="panelDistribution">
-                <h3>Distribución Espectral</h3>
-                <div class="canvas-container" style="height: 250px;">
-                    <canvas id="distributionChart"></canvas>
-                </div>
-            </div>
-
-            <div class="panel" id="panelColorBox">
-                <h3>Color Espectral</h3>
-                <div id="colorBoxDisplay"></div>
-                <div class="srgb-val" id="srgbText">SRGB= [0.000, 0.000, 0.000]</div>
-            </div>
-        </div>
+    <!-- Contenedor del Gráfico -->
+    <div class="chart-container">
+        <canvas id="espectroChart"></canvas>
     </div>
+</div>
 
-    <script src="app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
