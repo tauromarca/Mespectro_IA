@@ -9,38 +9,32 @@ let archivo_blanco = [];
 let archivo_negro = [];
 let archivo_muestra = [];
 
-// Base de datos SQLite
-let db = null;
+// Longitudes de onda por defecto (según tu string de Python)
 
-// Datos para la animación simulada de prueba originales
+
+const espectro_ondas =;
+
+let spectroReadings1 = []; 
+
+// Datos para la animación simulada de prueba
 const languages1 = ['Python', 'JS', 'C++', 'Java', 'HTML'];
-const popularity1 = [11.27, 11.16, 10.46, 7.5, 5.26];
+const popularity1 =;
 const colores1 = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
 
 const languages2 = ['Ruby', 'Go', 'Rust', 'PHP', 'Swift'];
-const popularity2 = [2.27, 3.16, 3.46, 10.5, 20.26];
+const popularity2 =;
 const colores2 = ['#e67e22', '#1abc9c', '#e74c3c', '#34495e', '#d35400'];
 
 let chartInstance = null;
-let puertoSerial = null;
-let animacionInterval = null; // Control de la animación simulada
+let puertoSerial = null; // Para conectar hardware real desde el navegador
 
 // ============================================================================
 // INICIALIZACIÓN (Reemplazo de inicio1)
 // ============================================================================
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
     inicializarGrafico();
     configurarEventos();
-    iniciarAnimacionSimulada();
-    
-    // Inicializar Motor SQLite
-    try {
-        const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-        window.SQL = SQL;
-        console.log("Motor SQLite (SQL.js) cargado correctamente.");
-    } catch (err) {
-        console.error("Error al cargar SQL.js:", err);
-    }
+    iniciarAnimacionSimulada(); // Inicia el equivalente de FuncAnimation
 });
 
 function inicializarGrafico() {
@@ -67,17 +61,11 @@ function inicializarGrafico() {
     });
 }
 
+// Configura los listeners de los elementos HTML (Reemplazo de los commands de Tkinter)
 function configurarEventos() {
-    // Configuración de Base de datos
-    document.getElementById('file-db').addEventListener('change', cargarBaseDatos);
-    document.getElementById('btn-listar').addEventListener('click', listarRegistrosSQLite);
-    
-    // Conectores a la memoria
-    document.getElementById('btn-cargar-blanco').addEventListener('click', () => extraerRegistroBD('blanco'));
-    document.getElementById('btn-cargar-negro').addEventListener('click', () => extraerRegistroBD('negro'));
-    document.getElementById('btn-cargar-muestra').addEventListener('click', () => extraerRegistroBD('muestra'));
-    
-    // Controles de Hardware originales
+    document.getElementById('file-blanco').addEventListener('change', (e) => leerArchivo(e, 'blanco'));
+    document.getElementById('file-negro').addEventListener('change', (e) => leerArchivo(e, 'negro'));
+    document.getElementById('file-muestra').addEventListener('change', (e) => leerArchivo(e, 'muestra'));
     document.getElementById('btn-enviar').addEventListener('click', () => {
         prueba_progreso();
         grabar_muestra_simulado();
@@ -86,135 +74,17 @@ function configurarEventos() {
 }
 
 // ============================================================================
-// LECTURA DE BASE DE DATOS SQLITE (Reemplazo del CSV FileReader)
+// EQUIVALENTE A FUNCANIMATION (Matplotlib)
 // ============================================================================
-
-// 1. Cargar archivo .db a la memoria
-function cargarBaseDatos(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function() {
-        const Uints = new Uint8Array(reader.result);
-        db = new window.SQL.Database(Uints);
-        alert("¡Base de datos cargada exitosamente!");
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// 2. Buscar y listar registros mostrando (Nombre, Código, Fecha)
-function listarRegistrosSQLite() {
-    if (!db) { alert("Primero debes seleccionar el archivo .db"); return; }
-    
-    const tabla = document.getElementById('select-tabla').value;
-    let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
-
-    try {
-        const query = `SELECT ${colNombre}, codigo_fermentacion, fecha, hora FROM ${tabla}`;
-        const res = db.exec(query);
-        const sel = document.getElementById('select-registros');
-        sel.innerHTML = '';
-
-        if (res.length > 0) {
-            res[0].values.forEach(row => {
-                let opt = document.createElement('option');
-                // Almacenamos los datos clave en JSON para luego buscarlos exactamente
-                opt.value = JSON.stringify({tabla: tabla, nombre: row[0], codigo: row[1], fecha: row[2], hora: row[3]});
-                opt.text = `${row[0]} | Cód: ${row[1]} | Fecha: ${row[2]}`;
-                sel.appendChild(opt);
-            });
-        } else {
-            sel.innerHTML = '<option value="">La tabla está vacía</option>';
-        }
-    } catch (err) {
-        alert("Error al leer la tabla: " + err.message);
-    }
-}
-
-// 3. Extraer s1 a s288 y cargarlo en la variable correspondiente
-function extraerRegistroBD(tipoDestino) {
-    if (!db) { alert("Base de datos no cargada"); return; }
-    
-    const selectValue = document.getElementById('select-registros').value;
-    if (!selectValue) { alert("Debes seleccionar un registro de la lista"); return; }
-
-    const pk = JSON.parse(selectValue);
-    let colNombre = pk.tabla === 'muestras' ? 'nombre_muestra' : `nombre_${pk.tabla.slice(0, -1)}`;
-
-    // Hacer la consulta exacta a esa fila
-    const query = `SELECT * FROM ${pk.tabla} WHERE ${colNombre}='${pk.nombre}' AND codigo_fermentacion=${pk.codigo} AND fecha='${pk.fecha}' AND hora='${pk.hora}'`;
-    const res = db.exec(query);
-
-    if (res.length > 0) {
-        const columns = res[0].columns;
-        const values = res[0].values[0];
-
-        // Extraer específicamente los campos desde s1 hasta s288
-        let espectroExtraido = [];
-        for (let i = 1; i <= 288; i++) {
-            let colIndex = columns.indexOf(`s${i}`);
-            espectroExtraido.push(colIndex !== -1 ? values[colIndex] : 0);
-        }
-
-        // Asignar al estado global de la aplicación igual que tu código original
-        if (tipoDestino === 'blanco') {
-            archivo_blanco = espectroExtraido;
-            nombre_archivo_blanco = pk.nombre;
-            console.log("Blanco cargado:", archivo_blanco);
-            alert(`Blanco [${pk.nombre}] cargado exitosamente.`);
-        } 
-        else if (tipoDestino === 'negro') {
-            archivo_negro = espectroExtraido;
-            nombre_archivo_negro = pk.nombre;
-            console.log("Negro cargado:", archivo_negro);
-            alert(`Negro [${pk.nombre}] cargado exitosamente.`);
-        } 
-        else if (tipoDestino === 'muestra') {
-            archivo_muestra = espectroExtraido;
-            nombre_archivo_muestra = pk.nombre;
-            console.log("Muestra cargada:", archivo_muestra);
-            alert(`Muestra [${pk.nombre}] cargada exitosamente.`);
-            
-            // Opcional: Detener la animación de prueba y graficar la muestra cargada
-            clearInterval(animacionInterval);
-            chartInstance.data.labels = Array.from({length: 288}, (_, i) => `s${i+1}`);
-            chartInstance.data.datasets[0].data = archivo_muestra;
-            chartInstance.data.datasets[0].label = `Muestra Cargada: ${pk.nombre}`;
-            chartInstance.data.datasets[0].backgroundColor = '#2980b9';
-            chartInstance.update();
-        }
-    }
-}
-
-function cerrar_muestra() {
-    console.log("Cerrando muestra previa...");
-    document.getElementById('progreso-bloque').style.display = 'none';
-}
-
-// ============================================================================
-// HARDWARE Y SIMULACIONES ORIGINALES
-// ============================================================================
-async function conectarHardware() {
-    if (!("serial" in navigator)) {
-        alert("Tu navegador no soporta comunicación Serial por hardware. Usa Google Chrome o Edge.");
-        return;
-    }
-    try {
-        puertoSerial = await navigator.serial.requestPort();
-        await puertoSerial.open({ baudRate: 9600 });
-        alert("¡Hardware conectado exitosamente a la Web!");
-    } catch (error) {
-        console.error("Error conectando al puerto serial:", error);
-    }
-}
-
 function iniciarAnimacionSimulada() {
     let i = 0;
-    animacionInterval = setInterval(() => {
+    setInterval(() => {
         i++;
-        if (i >= 20) i = 1; 
+        if (i >= 20) i = 1; // np.arange(1, 20)
         
+        console.log("i =", i);
+        
+        // Lógica de update idéntica a tu función animate1(i)
         if (i < 10) {
             chartInstance.data.labels = languages1;
             chartInstance.data.datasets[0].data = popularity1;
@@ -224,8 +94,136 @@ function iniciarAnimacionSimulada() {
             chartInstance.data.datasets[0].data = popularity2;
             chartInstance.data.datasets[0].backgroundColor = colores2;
         }
-        chartInstance.update('none'); 
-    }, 250);
+        chartInstance.update('none'); // Actualiza el gráfico sin animaciones bruscas
+    }, 250); // 250ms de intervalo
 }
 
-function prueba_progreso(
+// ============================================================================
+// PROCESAMIENTO MATRICIAL (Reemplazo de NumPy y Pandas)
+// ============================================================================
+
+const transponerMatriz = (matriz) => 
+    matriz.map((_, colIndex) => matriz.map(row => row[colIndex]));
+
+function leerArchivo(evento, tipo) {
+    const archivo = evento.target.files[0];
+    if (!archivo) return;
+
+    const lector = new FileReader();
+    lector.onload = function(e) {
+        const contenido = e.target.result;
+        if (tipo === 'blanco') crear_blanco(contenido, archivo.name);
+        if (tipo === 'negro') crear_negro(contenido, archivo.name);
+        if (tipo === 'muestra') crear_muestra(contenido, archivo.name);
+    };
+    lector.readAsText(archivo);
+}
+
+function cerrar_muestra() {
+    console.log("Cerrando muestra previa...");
+    document.getElementById('progreso-bloque').style.display = 'none';
+}
+
+function crear_blanco(contenidoCSV, nombre) {
+    cerrar_muestra();
+    archivo_blanco = [];
+
+    // Parsear filas delimitadas por ';' y procesar un máximo de 288 filas
+    let filas = contenidoCSV.trim().split("\n").slice(0, 288);
+    let matriz = filas.map(fila => fila.split(";").map(val => Math.round(parseFloat(val) || 0)));
+
+    let matrizTranspuesta = transponerMatriz(matriz);
+    archivo_blanco = matrizTranspuesta[matrizTranspuesta.length - 1]; // Última columna
+
+    nombre_archivo_blanco = nombre;
+    console.log("Archivo blanco inicializado:", archivo_blanco);
+}
+
+function crear_negro(contenidoCSV, nombre) {
+    cerrar_muestra();
+    archivo_negro = [];
+
+    let filas = contenidoCSV.trim().split("\n").slice(0, 288);
+    let matriz = filas.map(fila => fila.split(";").map(val => Math.round(parseFloat(val) || 0)));
+
+    let matrizTranspuesta = transponerMatriz(matriz);
+    archivo_negro = matrizTranspuesta[matrizTranspuesta.length - 1];
+
+    nombre_archivo_negro = nombre;
+    console.log("Archivo negro inicializado:", archivo_negro);
+}
+
+function convertir_fila(fila) {
+    let primeraCelda = String(fila[0]).toUpperCase();
+    if (["PH", "DENSIDAD", "ALCOHOL"].includes(primeraCelda)) {
+        return fila; 
+    }
+    return fila.map(x => {
+        let num = parseFloat(x);
+        return isNaN(num) ? x : Math.round(num);
+    });
+}
+
+function crear_muestra(contenidoCSV, nombre) {
+    cerrar_muestra();
+
+    if (nombre_archivo_blanco.length < 1) {
+        alert("Error falta archivo de blancos: Debe cargar archivo de blancos");
+        return;
+    }
+
+    let filas = contenidoCSV.trim().split("\n");
+    let df = filas.map(fila => fila.split(";"));
+
+    // Aplicar conversión por filas (Equivalente al axis=1 de Pandas)
+    df = df.map(fila => convertir_fila(fila));
+
+    let archivo_muestra_completo = transponerMatriz(df);
+    archivo_muestra = archivo_muestra_completo.slice(0, 288); // Recorte matricial [:288, :]
+
+    nombre_archivo_muestra = nombre;
+    console.log("Archivo Muestra procesado con éxito.");
+}
+
+// ============================================================================
+// HARDWARE / WEB SERIAL API (Reemplazo de serial/list_ports de Python)
+// ============================================================================
+async function conectarHardware() {
+    if (!("serial" in navigator)) {
+        alert("Tu navegador no soporta comunicación Serial por hardware. Usa Google Chrome o Edge.");
+        return;
+    }
+    try {
+        // Pide permiso al usuario para abrir el puerto COM/USB
+        puertoSerial = await navigator.serial.requestPort();
+        await puertoSerial.open({ baudRate: 9600 });
+        alert("¡Hardware conectado exitosamente a la Web!");
+    } catch (error) {
+        console.error("Error conectando al puerto serial:", error);
+    }
+}
+
+// ============================================================================
+// INTERFAZ DE PROGRESO SIMULADA (Reemplazo del hilo/thread de progreso)
+// ============================================================================
+function prueba_progreso() {
+    cerrar_muestra();
+    const bloque = document.getElementById('progreso-bloque');
+    const barra = document.getElementById('progreso-barra');
+    
+    bloque.style.display = 'block';
+    barra.value = 0;
+
+    let intervalo = setInterval(() => {
+        barra.value += 10; // Incremento
+        if (barra.value >= 100) {
+            clearInterval(intervalo);
+            setTimeout(() => bloque.style.display = 'none', 500);
+        }
+    }, 100);
+}
+
+function grabar_muestra_simulado() {
+    console.log("Generando archivo CSV para descarga...");
+    // Aquí puedes disparar una descarga automática del archivo modificado si lo deseas
+}
