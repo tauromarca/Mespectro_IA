@@ -36,7 +36,6 @@
         .btn-blue { background-color: #2980b9; }
         .btn-green { background-color: #27ae60; }
         .btn-danger { background-color: #c0392b; }
-        .btn-purple { background-color: #8e44ad; }
         
         select, input[type="text"] {
             width: 100%; padding: 6px; margin: 4px 0 8px 0; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; font-size: 12px;
@@ -51,6 +50,21 @@
             flex-direction: column;
         }
         
+        /* Banner superior de información de la muestra */
+        .sample-info-banner {
+            background: #eef2f7;
+            border-left: 5px solid #2980b9;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+        .sample-info-banner strong { color: #2c3e50; }
+        .sample-info-banner span { color: #2980b9; font-weight: 600; }
+
         .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; background: #34495e; padding: 10px; border-radius: 5px; }
 
         #viewMonitor { display: block; }
@@ -83,7 +97,6 @@
         <!-- SECCIÓN 1: BASE DE DATOS -->
         <h2>📂 Base de Datos</h2>
         <p id="db-status" style="font-size: 11px; margin-top:0; color:#f1c40f;">⏳ Buscando muestras_espectro.db...</p>
-        <button class="btn btn-purple" id="btnExportDB" style="display: none;">💾 Descargar BD Manual</button>
 
         <!-- SECCIÓN 2: CARGA INDEPENDIENTE DESDE BD -->
         <h2>🔍 Cargar Referencias (BD)</h2>
@@ -106,10 +119,9 @@
             <button class="btn btn-green" id="btnLoadMuestra">📥 Cargar Muestra</button>
         </div>
 
-        <!-- SECCIÓN 3: SIMULADOR Y GRABADO -->
+        <!-- SECCIÓN 3: CONTROL Y GUARDADO -->
         <h2>🔴 Control y Guardado</h2>
         <button class="btn" id="btnMonitor">Iniciar Monitoreo Vivo</button>
-        <!-- SOLO QUEDA EL BOTÓN DE GUARDAR MUESTRA -->
         <button class="btn" id="btnSample">Grabar Muestra en BD</button>
 
         <!-- SECCIÓN 4: ANÁLISIS -->
@@ -127,6 +139,16 @@
     </div>
 
     <div class="main-content">
+        <!-- Banner superior con los datos de la muestra activa -->
+        <div class="sample-info-banner">
+            <div>
+                <strong>Muestra actual:</strong> <span id="infoNombreMuestra">Ninguna (Monitoreo en vivo)</span>
+            </div>
+            <div>
+                <strong>Fecha:</strong> <span id="infoFechaMuestra">--/--/----</span>
+            </div>
+        </div>
+
         <div id="viewMonitor">
             <h2 id="chartTitle">Respuesta Espectral</h2>
             <div class="canvas-container" style="height: 450px;">
