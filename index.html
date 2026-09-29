@@ -83,25 +83,25 @@
         <!-- SECCIÓN 1: BASE DE DATOS -->
         <h2>📂 Base de Datos</h2>
         <p id="db-status" style="font-size: 11px; margin-top:0; color:#f1c40f;">⏳ Buscando muestras_espectro.db...</p>
-        <button class="btn btn-purple" id="btnExportDB" style="display: none;">💾 Descargar BD Actualizada</button>
+        <button class="btn btn-purple" id="btnExportDB" style="display: none;">💾 Descargar BD Manual</button>
 
         <!-- SECCIÓN 2: CARGA INDEPENDIENTE DESDE BD -->
-        <h2>🔍 Cargar desde BD</h2>
+        <h2>🔍 Cargar Referencias (BD)</h2>
         
         <div style="margin-bottom: 10px;">
             <label>1. Blanco:</label>
             <select id="select-blancos"><option value="">Cargando...</option></select>
-            <button class="btn btn-green" id="btnLoadBlanco">📥 Cargar Blanco</button>
+            <button class="btn btn-green" id="btnLoadBlanco">📥 Fija como Blanco</button>
         </div>
         
         <div style="margin-bottom: 10px;">
             <label>2. Negro:</label>
             <select id="select-negros"><option value="">Cargando...</option></select>
-            <button class="btn btn-green" id="btnLoadNegro">📥 Cargar Negro</button>
+            <button class="btn btn-green" id="btnLoadNegro">📥 Fija como Negro</button>
         </div>
         
         <div style="margin-bottom: 10px;">
-            <label>3. Muestra:</label>
+            <label>3. Muestra (Visualizar):</label>
             <select id="select-muestras"><option value="">Cargando...</option></select>
             <button class="btn btn-green" id="btnLoadMuestra">📥 Cargar Muestra</button>
         </div>
@@ -109,8 +109,7 @@
         <!-- SECCIÓN 3: SIMULADOR Y GRABADO -->
         <h2>🔴 Control y Guardado</h2>
         <button class="btn" id="btnMonitor">Iniciar Monitoreo Vivo</button>
-        <button class="btn" id="btnDark">Grabar Negro en BD</button>
-        <button class="btn" id="btnBlank">Grabar Blanco en BD</button>
+        <!-- SOLO QUEDA EL BOTÓN DE GUARDAR MUESTRA -->
         <button class="btn" id="btnSample">Grabar Muestra en BD</button>
 
         <!-- SECCIÓN 4: ANÁLISIS -->
