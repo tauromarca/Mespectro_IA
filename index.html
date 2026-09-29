@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mini Espectrómetro Espectro-IA</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Agregamos SQL.js para leer SQLite en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -37,7 +39,13 @@
         .btn-green { background-color: #27ae60; }
         .btn-green:hover { background-color: #2ecc71; }
         .btn-danger { background-color: #c0392b; }
+        .btn-purple { background-color: #8e44ad; }
+        .btn-purple:hover { background-color: #9b59b6; }
         
+        select, input[type="text"] {
+            width: 100%; padding: 6px; margin: 5px 0 10px 0; border-radius: 4px; border: 1px solid #ccc;
+        }
+
         .main-content {
             flex-grow: 1; margin-left: 20px;
             background-color: white; padding: 20px;
@@ -51,7 +59,6 @@
         /* VISTAS INTERCAMBIABLES */
         #viewMonitor { display: block; }
         
-        /* Aumentamos el espacio para el diagrama haciéndolo 1.5 veces más grande que la columna derecha */
         #viewColorAnalysis { 
             display: none; 
             grid-template-columns: 1.5fr 1fr; 
@@ -84,31 +91,39 @@
 <body>
 
     <div class="sidebar">
-        <h2>🔴 Control en Vivo</h2>
-        <button class="btn" id="btnMonitor">Iniciar Monitoreo</button>
-        <button class="btn" id="btnDark">Grabar Negro (Vivo)</button>
-        <button class="btn" id="btnBlank">Grabar Blanco (Vivo)</button>
-        <button class="btn" id="btnSample">Grabar Muestra (Vivo)</button>
-        
-        <h2>📁 Cargar Archivos CSV</h2>
-        <input type="file" id="fileDark" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileDark').click()">📥 Subir Negro</button>
+        <!-- BASE DE DATOS -->
+        <h2>📂 Base de Datos SQLite</h2>
+        <input type="file" id="fileDB" accept=".db,.sqlite" style="display: none;">
+        <button class="btn btn-purple" onclick="document.getElementById('fileDB').click()">📥 Cargar muestras_espectro.db</button>
+        <button class="btn btn-purple" id="btnExportDB" style="display: none;">💾 Descargar BD Actualizada</button>
 
-        <input type="file" id="fileBlank" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileBlank').click()">📥 Subir Blanco</button>
+        <h2>🔍 Cargar desde BD</h2>
+        <select id="dbTableSelect">
+            <option value="blancos">Tabla: Blancos</option>
+            <option value="negros">Tabla: Negros</option>
+            <option value="muestras">Tabla: Muestras</option>
+        </select>
+        <button class="btn btn-green" id="btnListDB">Listar Registros</button>
         
-        <input type="file" id="fileSample" accept=".csv" style="display: none;">
-        <button class="btn btn-green" onclick="document.getElementById('fileSample').click()">📥 Subir Muestra</button>
+        <select id="dbRecordSelect">
+            <option value="">-- Sin registros --</option>
+        </select>
+        <button class="btn btn-green" id="btnLoadRecord">Cargar Registro Seleccionado</button>
+
+        <h2>🔴 Control en Vivo (Grabar en BD)</h2>
+        <button class="btn" id="btnMonitor">Iniciar Monitoreo</button>
+        <button class="btn" id="btnDark">Grabar Negro en BD</button>
+        <button class="btn" id="btnBlank">Grabar Blanco en BD</button>
+        <button class="btn" id="btnSample">Grabar Muestra en BD</button>
 
         <h2>📊 Análisis</h2>
         <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
         <button class="btn btn-blue" id="btnColor">Color Espectral</button>
-        <button class="btn btn-blue" id="btnExport">Exportar Muestra CSV</button>
         
         <button class="btn btn-danger" id="btnStop">Detener / Limpiar</button>
 
         <div class="status" id="statusPanel">
-            <strong>Estado de Datos:</strong><br><br>
+            <strong>Estado de Datos en RAM:</strong><br><br>
             Blanco: ❌ Vacío<br>
             Negro: ❌ Vacío<br>
             Muestra: ❌ Vacía
