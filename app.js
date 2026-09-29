@@ -30,7 +30,7 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. TABLAS CIE UNIFICADA Y D65
+// 2. TABLAS CIE Y FUNCIONES MATEMÁTICAS
 // ==========================================
 const CIE_CMF = [
     {wl: 340, x: 0.0000, y: 0.0000, z: 0.0000}, {wl: 350, x: 0.0000, y: 0.0000, z: 0.0000},
@@ -68,7 +68,7 @@ function getCMF(wave) {
             return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y), z: p1.z + t * (p2.z - p1.z) };
         }
     }
-    return {x: 0, y: 0, z: 0};
+    return {x:0, y:0, z:0};
 }
 
 const D65 = [
@@ -134,7 +134,6 @@ function uvToColorHex(u, v) {
     return `rgb(${Math.round(gammaSRGB(r)*255)},${Math.round(gammaSRGB(g)*255)},${Math.round(gammaSRGB(b)*255)})`;
 }
 
-// Locus espectral
 let locusData = [];
 for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getCMF(wl);
@@ -147,51 +146,63 @@ for (let wl = 380; wl <= 700; wl += 5) {
 // ==========================================
 let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
-
 let db = null; 
 
-// Actualizar banner de información
-function actualizarBannerMuestra(nombre, fecha) {
-    document.getElementById('infoNombreMuestra').innerText = nombre || "Ninguna";
-    document.getElementById('infoFechaMuestra').innerText = fecha || "--/--/----";
-}
-
-// Descargar BD en memoria de forma directa
-function descargarBDDirecta() {
-    if (!db) return;
-    const data = db.export();
-    const blob = new Blob([data], {type: "application/octet-stream"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "muestras_espectro.db";
-    a.click();
-}
-
-// Inicializar SQL.js y cargar base de datos automáticamente
+// ==========================================
+// 4. AUTENTICACIÓN Y CARGA DE BASE DE DATOS
+// ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
     try {
         const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
         window.SQL = SQL;
         
+        // Carga silenciosa y automática de la Base de Datos
         const response = await fetch("muestras_espectro.db");
-        if (!response.ok) throw new Error("No se encontró muestras_espectro.db en el servidor.");
+        if (!response.ok) throw new Error("No se encontró la BD en el servidor.");
         
         const buffer = await response.arrayBuffer();
         db = new SQL.Database(new Uint8Array(buffer));
         
-        document.getElementById('db-status').innerHTML = "✔️ BD Cargada.";
-        document.getElementById('db-status').style.color = "#2ecc71";
+        // BD Lista -> Habilitar Login
+        document.getElementById('login-db-status').innerHTML = "✔️ BD Enlazada. Ingrese sus credenciales.";
+        document.getElementById('login-db-status').style.color = "#2ecc71";
+        document.getElementById('btnLogin').disabled = false;
         
         actualizarListasDesplegables();
 
     } catch (err) {
-        console.error("Error cargando la base de datos:", err);
-        document.getElementById('db-status').innerHTML = "❌ Error al cargar BD automáticamente.";
-        document.getElementById('db-status').style.color = "#e74c3c";
+        console.error("Error BD:", err);
+        document.getElementById('login-db-status').innerHTML = "❌ Error al cargar Base de Datos SQLite.";
+        document.getElementById('login-db-status').style.color = "#e74c3c";
     }
 });
 
-// Poblar los 3 selects independientes
+// LOGIC DE LOGIN SEGURO (Evita SQL Injection mediante bind)
+document.getElementById('btnLogin').addEventListener('click', () => {
+    const user = document.getElementById('loginUser').value.trim();
+    const pass = document.getElementById('loginPass').value.trim();
+    const errorMsg = document.getElementById('loginError');
+    
+    if(!db) { errorMsg.innerText = "La base de datos no está disponible."; return; }
+    
+    try {
+        const stmt = db.prepare("SELECT * FROM usuarios WHERE username=:u AND password=:p");
+        const result = stmt.getAsObject({':u': user, ':p': pass});
+        
+        if (result && result.username) {
+            // Login Exitoso -> Mostrar App
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'flex';
+        } else {
+            errorMsg.innerText = "Usuario o contraseña incorrectos.";
+        }
+        stmt.free();
+    } catch (e) {
+        errorMsg.innerText = "Error consultando credenciales: " + e.message;
+    }
+});
+
+// Poblar los 3 selects
 function actualizarListasDesplegables() {
     if (!db) return;
     llenarSelect('blancos', 'nombre_blanco', 'select-blancos');
@@ -220,11 +231,11 @@ function llenarSelect(tabla, colNombre, selectId) {
     }
 }
 
-// Carga Dinámica desde los Selects a la Memoria
+// Carga Dinámica (SIN ALERTAS MOLESTAS)
 function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
     const seleccion = document.getElementById(selectId).value;
-    if (!seleccion) { alert("Seleccione un registro válido."); return; }
+    if (!seleccion) return;
     
     const pk = JSON.parse(seleccion);
     let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
@@ -242,24 +253,21 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
             arrEspectro.push(colIndex !== -1 ? values[colIndex] : 0);
         }
 
-        if (tipoDestino === 'blanco') { blankData = arrEspectro; alert("Blanco fijado como referencia."); }
-        if (tipoDestino === 'negro') { darkData = arrEspectro; alert("Negro fijado como referencia."); }
+        if (tipoDestino === 'blanco') { blankData = arrEspectro; }
+        if (tipoDestino === 'negro') { darkData = arrEspectro; }
         if (tipoDestino === 'muestra') { 
             sampleData = arrEspectro; 
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
-            document.getElementById('chartTitle').innerText = `Respuesta Espectral (BD: ${pk.nombre})`;
+            
+            // ACTUALIZA EL TÍTULO CON NOMBRE Y FECHA EXACTA
+            document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${pk.nombre} | Fecha: ${pk.fecha}`;
             spectroChart.config.type = 'bar';
             spectroChart.data.datasets[0].data = sampleData;
+            spectroChart.data.datasets[0].pointRadius = 0;
             spectroChart.update();
-            
-            // Actualizar nombre y fecha en pantalla
-            actualizarBannerMuestra(pk.nombre, pk.fecha);
-            alert("Muestra cargada.");
         }
         updateStatus();
-    } else {
-        alert("Registro no encontrado en la base de datos.");
     }
 }
 
@@ -268,52 +276,46 @@ document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarR
 document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
 document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
 
-// Guardar Muestra en la Base de Datos y Descargar Automáticamente
-function guardarEnBD(tabla) {
+// Guardar Muestra y Exportar BD Automáticamente (SIN BOTÓN MANUAL DE EXPORTAR)
+function exportarBD() {
+    if (!db) return;
+    const data = db.export();
+    const blob = new Blob([data], {type: "application/octet-stream"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "muestras_espectro.db";
+    a.click();
+}
+
+document.getElementById('btnSample').addEventListener('click', () => { 
+    sampleData = [...currentData]; 
+    updateStatus(); 
+    
     if (!db) { alert("Base de datos no cargada."); return; }
     
-    let nombre = prompt(`Ingrese nombre para guardar en tabla ${tabla.toUpperCase()}:`);
+    let nombre = prompt(`Ingrese nombre para guardar la MUESTRA:`);
     if (!nombre) return; 
-
-    let dataToSave = sampleData;
-    if (!dataToSave) { alert("No hay datos de muestra en memoria para guardar."); return; }
 
     const now = new Date();
     const fechaStr = now.toLocaleDateString('es-CL').replace(/\//g, '-');
-    let colNombre = 'nombre_muestra';
-
-    let cols = `${colNombre}, codigo_fermentacion, fecha`;
+    let cols = `nombre_muestra, codigo_fermentacion, fecha`;
     let places = `?, 1, ?`;
     let vals = [nombre, fechaStr];
 
     for (let i = 1; i <= 288; i++) {
         cols += `, s${i}`;
         places += `, ?`;
-        vals.push(dataToSave[i-1]);
+        vals.push(sampleData[i-1]);
     }
 
-    const sql = `INSERT INTO ${tabla} (${cols}) VALUES (${places})`;
+    const sql = `INSERT INTO muestras (${cols}) VALUES (${places})`;
     try {
         db.run(sql, vals);
-        actualizarListasDesplegables();
-        
-        // Actualizar banner en pantalla
-        actualizarBannerMuestra(nombre, fechaStr);
-
-        alert(`Muestra guardada con éxito en la BD.\nSe descargará automáticamente el archivo actualizado.`);
-        
-        // Descarga automática sin botón manual
-        descargarBDDirecta();
+        actualizarListasDesplegables(); 
+        exportarBD(); // Descarga invisible e inmediata
     } catch (e) {
         alert("Error al guardar: " + e.message);
     }
-}
-
-// Botón de Guardar Muestra
-document.getElementById('btnSample').addEventListener('click', () => { 
-    sampleData = [...currentData]; 
-    updateStatus(); 
-    guardarEnBD('muestras'); 
 });
 
 function updateStatus() {
@@ -326,7 +328,7 @@ function updateStatus() {
 }
 
 // ==========================================
-// 4. CONFIGURACIÓN DE LOS GRÁFICOS
+// 5. CONFIGURACIÓN DE LOS GRÁFICOS
 // ==========================================
 const ctx = document.getElementById('spectroChart').getContext('2d');
 let spectroChart = new Chart(ctx, {
@@ -439,7 +441,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
 });
 
 // ==========================================
-// 5. MANEJO DE VISTAS
+// 6. MANEJO DE VISTAS Y CONTROLES VIVO
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -449,15 +451,11 @@ function setView(viewMode) {
     }
 }
 
-// ==========================================
-// 6. EVENTOS DE LOS BOTONES
-// ==========================================
 document.getElementById('btnMonitor').addEventListener('click', () => {
-    isMonitoring = true; setView('monitor'); 
-    document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
-    actualizarBannerMuestra("En vivo (Monitoreo)", new Date().toLocaleDateString('es-CL'));
-    
+    isMonitoring = true; setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
     spectroChart.config.type = 'bar'; spectroChart.data.datasets[0].backgroundColor = bgColors; spectroChart.data.datasets[0].borderColor = bgColors; spectroChart.options.scales.y.max = 1050;
+    spectroChart.data.datasets[0].pointRadius = 0; 
+    
     if (monitorInterval) clearInterval(monitorInterval);
     monitorInterval = setInterval(() => {
         let newData = [];
@@ -495,7 +493,11 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    document.getElementById('chartTitle').innerText = "Absorbancia";
+    // Mantener el nombre si existía
+    let currentTitle = document.getElementById('chartTitle').innerText;
+    let baseTitle = currentTitle.includes("Muestra:") ? currentTitle.split("|")[1] + "|" + currentTitle.split("|")[2] : "";
+    document.getElementById('chartTitle').innerText = `Absorbancia ${baseTitle ? "| " + baseTitle : ""}`;
+    
     spectroChart.config.type = 'line'; 
     spectroChart.data.datasets[0].data = absorbanceData;
     spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)'; 
