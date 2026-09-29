@@ -100,7 +100,6 @@ function XYZto_sRGB(X, Y, Z) {
     let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
-
     let gamma = (c) => {
         let abs_c = Math.abs(c);
         let res = abs_c <= 0.0031308 ? 12.92 * abs_c : 1.055 * Math.pow(abs_c, 1 / 2.4) - 0.055;
@@ -151,7 +150,7 @@ let db = null;
 // Variables para almacenar info de la muestra actual
 let currentSampleName = "Desconocida";
 let currentSampleDate = "--";
-let currentSampleClasificacion = "--"; // NUEVA VARIABLE PARA CLASIFICACIÓN
+let currentSampleClasificacion = "--"; 
 
 // ==========================================
 // 4. AUTENTICACIÓN Y CARGA DE BASE DE DATOS
@@ -236,7 +235,7 @@ function llenarSelect(tabla, colNombre, selectId) {
     }
 }
 
-// Carga Dinámica (SIN ALERTAS MOLESTAS)
+// Carga Dinámica 
 function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
     const seleccion = document.getElementById(selectId).value;
@@ -265,21 +264,19 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
             currentSampleName = pk.nombre;
             currentSampleDate = pk.fecha;
             
-            // Buscar si existe el campo "clasificacion" en la base de datos
+            // Buscar si existe el campo "clasificacion"
             let colClasIndex = columns.indexOf('clasificacion');
             currentSampleClasificacion = colClasIndex !== -1 && values[colClasIndex] ? values[colClasIndex] : "Sin clasificación";
             
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
             
-            // ACTUALIZA EL TÍTULO CON NOMBRE, FECHA Y CLASIFICACIÓN
             document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
             spectroChart.config.type = 'bar';
             spectroChart.data.datasets[0].data = sampleData;
             spectroChart.data.datasets[0].pointRadius = 0;
             spectroChart.update();
         }
-        updateStatus();
     }
 }
 
@@ -301,7 +298,6 @@ function exportarBD() {
 
 document.getElementById('btnSample').addEventListener('click', () => { 
     sampleData = [...currentData]; 
-    updateStatus(); 
     
     if (!db) { alert("Base de datos no cargada."); return; }
     
@@ -314,7 +310,6 @@ document.getElementById('btnSample').addEventListener('click', () => {
     let places = `?, 1, ?`;
     let vals = [nombre, fechaStr];
 
-    // Verificar dinámicamente si la tabla Muestras tiene la columna "clasificacion"
     let hasClasificacion = false;
     try {
         let tableInfo = db.exec(`PRAGMA table_info(muestras)`);
@@ -323,7 +318,6 @@ document.getElementById('btnSample').addEventListener('click', () => {
         }
     } catch (e) {}
 
-    // Si la BD soporta clasificación, le preguntamos al usuario
     if (hasClasificacion) {
         let clasif = prompt(`Ingrese la Clasificación para esta muestra (Opcional):`);
         cols += `, clasificacion`;
@@ -355,14 +349,6 @@ document.getElementById('btnSample').addEventListener('click', () => {
     }
 });
 
-function updateStatus() {
-    document.getElementById('statusPanel').innerHTML = `
-        <strong>Estado de Memoria (RAM):</strong><br><br>
-        Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
-        Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
-        Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
-    `;
-}
 
 // ==========================================
 // 5. CONFIGURACIÓN DE LOS GRÁFICOS
@@ -530,7 +516,6 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    // Título Dinámico de Absorbancia
     document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
     
     spectroChart.config.type = 'line'; 
@@ -550,7 +535,6 @@ document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
 
-    // Título Dinámico en Vista Color
     document.getElementById('colorAnalysisTitle').innerText = `Análisis de Color | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
 
     let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
