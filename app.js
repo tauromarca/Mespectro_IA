@@ -31,7 +31,6 @@ for (let i = 1; i <= 288; i++) {
 
 // ==========================================
 // 2. TABLA CIE UNIFICADA (340nm - 850nm)
-// Usamos una sola base para Locus y Muestra para evitar descalces matemáticos
 // ==========================================
 const CIE_CMF = [
     {wl: 340, x: 0.0000, y: 0.0000, z: 0.0000}, {wl: 350, x: 0.0000, y: 0.0000, z: 0.0000},
@@ -72,7 +71,6 @@ function getCMF(wave) {
     return {x:0, y:0, z:0};
 }
 
-// ILUMINANTE D65 (Garantiza los tonos rojizos en lugar de azulados)
 const D65 = [
     {w: 340, v: 39.9}, {w: 360, v: 46.6}, {w: 380, v: 50.0}, {w: 400, v: 82.8}, {w: 420, v: 93.4}, {w: 440, v: 104.9}, 
     {w: 460, v: 117.8}, {w: 480, v: 115.9}, {w: 500, v: 109.4}, {w: 520, v: 104.8}, {w: 540, v: 104.4}, {w: 560, v: 100.0}, 
@@ -94,7 +92,7 @@ function getD65(wl) {
 
 function XYZto_up_vp(X, Y, Z) {
     let denom = X + 15 * Y + 3 * Z;
-    if (denom === 0) return {x: 0.2105, y: 0.4739}; // Centro exacto si no hay luz
+    if (denom === 0) return {x: 0.2105, y: 0.4739}; 
     return { x: (4 * X) / denom, y: (9 * Y) / denom };
 }
 
@@ -102,6 +100,7 @@ function XYZto_sRGB(X, Y, Z) {
     let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+
     let gamma = (c) => {
         let abs_c = Math.abs(c);
         let res = abs_c <= 0.0031308 ? 12.92 * abs_c : 1.055 * Math.pow(abs_c, 1 / 2.4) - 0.055;
@@ -135,20 +134,183 @@ function uvToColorHex(u, v) {
     return `rgb(${Math.round(gammaSRGB(r)*255)},${Math.round(gammaSRGB(g)*255)},${Math.round(gammaSRGB(b)*255)})`;
 }
 
-// 3. GENERAR EL CONTORNO (LOCUS ESPECTRAL)
 let locusData = [];
-for (let wl = 380; wl <= 700; wl += 5) { // Visualmente se dibuja de 380 a 700 para evitar cruces
+for (let wl = 380; wl <= 700; wl += 5) {
     let cmf = getCMF(wl);
     let coords = XYZto_up_vp(cmf.x, cmf.y, cmf.z);
     if (coords.x !== 0 && coords.y !== 0) locusData.push({ wl: wl, x: coords.x, y: coords.y });
 }
 
 // ==========================================
-// 4. ESTADO GLOBAL
+// 3. ESTADO GLOBAL DE DATOS Y SQLITE
 // ==========================================
 let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 
+let db = null; // Instancia SQLite global
+
+// Inicializar SQL.js al cargar la página
+document.addEventListener("DOMContentLoaded", async () => {
+    try {
+        const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
+        window.SQL = SQL;
+        console.log("SQL.js cargado correctamente.");
+    } catch (err) {
+        console.error("Error cargando SQL.js:", err);
+    }
+});
+
+// ==========================================
+// 4. LECTURA, BÚSQUEDA Y GRABADO EN SQLITE
+// ==========================================
+
+// Cargar Archivo .db
+document.getElementById('fileDB').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        const Uints = new Uint8Array(reader.result);
+        db = new window.SQL.Database(Uints);
+        document.getElementById('btnExportDB').style.display = "block";
+        alert("¡Base de datos cargada exitosamente!");
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+// Exportar Base de datos
+document.getElementById('btnExportDB').addEventListener('click', () => {
+    if (!db) return;
+    const data = db.export();
+    const blob = new Blob([data], {type: "application/octet-stream"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "muestras_espectro.db";
+    a.click();
+});
+
+// Listar Registros según la tabla
+document.getElementById('btnListDB').addEventListener('click', () => {
+    if (!db) { alert("Primero debes cargar la base de datos."); return; }
+    
+    const tabla = document.getElementById('dbTableSelect').value;
+    let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
+
+    try {
+        const query = `SELECT ${colNombre}, codigo_fermentacion, fecha FROM ${tabla}`;
+        const res = db.exec(query);
+        const sel = document.getElementById('dbRecordSelect');
+        sel.innerHTML = '';
+
+        if (res.length > 0) {
+            res[0].values.forEach(row => {
+                let opt = document.createElement('option');
+                opt.value = JSON.stringify({ nombre: row[0], fecha: row[2] }); // Llaves para cargar
+                opt.text = `${row[0]} | Fecha: ${row[2]}`;
+                sel.appendChild(opt);
+            });
+        } else {
+            sel.innerHTML = '<option value="">Tabla vacía</option>';
+        }
+    } catch (err) {
+        alert("Error al leer la tabla: " + err.message);
+    }
+});
+
+// Cargar Registro a la Memoria y Gráfico
+document.getElementById('btnLoadRecord').addEventListener('click', () => {
+    if (!db) return;
+    const tabla = document.getElementById('dbTableSelect').value;
+    const seleccion = document.getElementById('dbRecordSelect').value;
+    
+    if (!seleccion) { alert("Seleccione un registro válido."); return; }
+    
+    const pk = JSON.parse(seleccion);
+    let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
+
+    const query = `SELECT * FROM ${tabla} WHERE ${colNombre}='${pk.nombre}' AND fecha='${pk.fecha}' AND codigo_fermentacion=1`;
+    const res = db.exec(query);
+
+    if (res.length > 0) {
+        const columns = res[0].columns;
+        const values = res[0].values[0];
+
+        let arrEspectro = [];
+        for (let i = 1; i <= 288; i++) {
+            let colIndex = columns.indexOf(`s${i}`);
+            arrEspectro.push(colIndex !== -1 ? values[colIndex] : 0);
+        }
+
+        if (tabla === 'blancos') { blankData = arrEspectro; alert("Blanco cargado."); }
+        if (tabla === 'negros') { darkData = arrEspectro; alert("Negro cargado."); }
+        if (tabla === 'muestras') { 
+            sampleData = arrEspectro; 
+            isMonitoring = false; clearInterval(monitorInterval);
+            setView('monitor');
+            document.getElementById('chartTitle').innerText = `Respuesta Espectral (BD: ${pk.nombre})`;
+            spectroChart.config.type = 'bar';
+            spectroChart.data.datasets[0].data = sampleData;
+            spectroChart.update();
+            alert("Muestra cargada.");
+        }
+        updateStatus();
+    }
+});
+
+// Guardar Registro en la Base de Datos
+function guardarEnBD(tabla) {
+    if (!db) { alert("Cargue primero la BD para grabar."); return; }
+    
+    let nombre = prompt(`Ingrese nombre para guardar en tabla ${tabla.toUpperCase()}:`);
+    if (!nombre) return; // Canceló
+
+    let dataToSave = (tabla === 'blancos') ? blankData : (tabla === 'negros' ? darkData : sampleData);
+    if (!dataToSave) { alert("No hay datos en memoria para guardar."); return; }
+
+    const now = new Date();
+    const fechaStr = now.toLocaleDateString('es-CL').replace(/\//g, '-');
+    let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
+
+    let cols = `${colNombre}, codigo_fermentacion, fecha`;
+    let places = `?, 1, ?`;
+    let vals = [nombre, fechaStr];
+
+    for (let i = 1; i <= 288; i++) {
+        cols += `, s${i}`;
+        places += `, ?`;
+        vals.push(dataToSave[i-1]);
+    }
+
+    const sql = `INSERT INTO ${tabla} (${cols}) VALUES (${places})`;
+    try {
+        db.run(sql, vals);
+        alert(`Guardado con éxito en la BD.\n¡Recuerde descargar la BD al finalizar!`);
+        // Actualizar la lista desplegable si estamos viendo esa misma tabla
+        if (document.getElementById('dbTableSelect').value === tabla) {
+            document.getElementById('btnListDB').click();
+        }
+    } catch (e) {
+        alert("Error al guardar: " + e.message);
+    }
+}
+
+// Botones de Grabar
+document.getElementById('btnDark').addEventListener('click', () => { darkData = [...currentData]; updateStatus(); guardarEnBD('negros'); });
+document.getElementById('btnBlank').addEventListener('click', () => { blankData = [...currentData]; updateStatus(); guardarEnBD('blancos'); });
+document.getElementById('btnSample').addEventListener('click', () => { sampleData = [...currentData]; updateStatus(); guardarEnBD('muestras'); });
+
+function updateStatus() {
+    document.getElementById('statusPanel').innerHTML = `
+        <strong>Estado de Datos en RAM:</strong><br><br>
+        Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
+    `;
+}
+
+// ==========================================
+// 5. CONFIGURACIÓN DE LOS GRÁFICOS
+// ==========================================
 const ctx = document.getElementById('spectroChart').getContext('2d');
 let spectroChart = new Chart(ctx, {
     type: 'bar',
@@ -162,9 +324,6 @@ let spectroChart = new Chart(ctx, {
     }
 });
 
-// ==========================================
-// 5. PLUGIN FONDO CIE (RENDERIZADO)
-// ==========================================
 const cieBackgroundPlugin = {
     id: 'cieBackground',
     beforeDatasetsDraw(chart) {
@@ -180,7 +339,7 @@ const cieBackgroundPlugin = {
         ctx.closePath();
         ctx.clip();
 
-        const step = 2; // Resolución del shader (Menor = mejor calidad pero más lento)
+        const step = 2;
         for (let py = chartArea.top; py < chartArea.bottom; py += step) {
             for (let px = chartArea.left; px < chartArea.right; px += step) {
                 let valU = x.getValueForPixel(px);
@@ -206,7 +365,6 @@ const cieBackgroundPlugin = {
         ctx.save();
         ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-        // Etiquetas organizadas para no superponerse
         const etiquetasVisibles = [420, 440, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 620, 680];
         locusData.forEach(p => {
             if (etiquetasVisibles.includes(p.wl)) {
@@ -242,7 +400,7 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
             },
             {
                 label: "Muestra",
-                data: [], // Se llena dinámicamente
+                data: [],
                 backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
             }
         ]
@@ -264,7 +422,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
 });
 
 // ==========================================
-// 6. MANEJO DE VISTAS Y BOTONES
+// 6. EVENTOS DE LOS BOTONES
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -273,37 +431,6 @@ function setView(viewMode) {
         document.getElementById('viewMonitor').style.display = 'none'; document.getElementById('viewColorAnalysis').style.display = 'grid';
     }
 }
-
-function processCSV(file, targetType) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const lines = e.target.result.trim().split('\n');
-        let dataArr = [];
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (line === '' || isNaN(parseInt(line[0]))) continue;
-            let parts = line.split(/[,;]/);
-            let val = parts.length > 1 ? parseFloat(parts[1]) : parseFloat(parts[0]);
-            if (!isNaN(val)) dataArr.push(val);
-        }
-        if (dataArr.length >= 288) {
-            let parsedData = dataArr.slice(0, 288);
-            if (targetType === 'dark') darkData = parsedData;
-            else if (targetType === 'blank') blankData = parsedData;
-            else if (targetType === 'sample') {
-                sampleData = parsedData; isMonitoring = false; clearInterval(monitorInterval);
-                setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (CSV)";
-                spectroChart.config.type = 'bar'; spectroChart.data.datasets[0].data = sampleData; spectroChart.update();
-            }
-            document.getElementById('statusPanel').innerHTML = `Blanco: ${blankData ? "✔️" : "❌"}<br>` + `Negro: ${darkData ? "✔️" : "❌"}<br>` + `Muestra: ${sampleData ? "✔️" : "❌"}`;
-            alert(`Archivo ${targetType.toUpperCase()} cargado.`);
-        } else alert(`Error: El archivo no tiene 288 filas.`);
-    }; reader.readAsText(file);
-}
-
-document.getElementById('fileDark').addEventListener('change', function() { if (this.files[0]) processCSV(this.files[0], 'dark'); this.value = null; });
-document.getElementById('fileBlank').addEventListener('change', function() { if (this.files[0]) processCSV(this.files[0], 'blank'); this.value = null; });
-document.getElementById('fileSample').addEventListener('change', function() { if (this.files[0]) processCSV(this.files[0], 'sample'); this.value = null; });
 
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true; setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
@@ -320,18 +447,13 @@ document.getElementById('btnMonitor').addEventListener('click', () => {
 });
 
 document.getElementById('btnStop').addEventListener('click', () => { isMonitoring = false; clearInterval(monitorInterval); });
-document.getElementById('btnDark').addEventListener('click', () => { darkData = [...currentData]; alert("Negro guardado."); });
-document.getElementById('btnBlank').addEventListener('click', () => { blankData = [...currentData]; alert("Blanco guardado."); });
-document.getElementById('btnSample').addEventListener('click', () => { sampleData = [...currentData]; alert("Muestra guardada."); });
 
-// ABSORBANCIA (Con picos locales)
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
     
     let absorbanceData = [];
-    let pRadiuses = [];
-    let pColors = [];
+    let pRadiuses = [], pColors = [];
 
     for (let i = 0; i < 288; i++) {
         let trans = Math.max(1e-4, (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]));
@@ -362,7 +484,6 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.update();
 });
 
-// COLOR ESPECTRAL
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
@@ -376,7 +497,7 @@ document.getElementById('btnColor').addEventListener('click', () => {
         
         spectrumValsCoords.push({ x: nm[i], y: val });
 
-        let cmf = getCMF(nm[i]); // ¡USA EL MISMO MOTOR QUE EL DIBUJO!
+        let cmf = getCMF(nm[i]); 
         let ill = getD65(nm[i]); 
 
         sum_X += val * cmf.x * ill;
@@ -394,11 +515,9 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     let srgb = XYZto_sRGB(X, Y, Z);
 
-    // Posicionar Muestra
     chromaticityChart.data.datasets[1].data = [coords];
     chromaticityChart.update();
 
-    // Gradiente de Distribución
     distributionChart.data.datasets[0].data = spectrumValsCoords;
     distributionChart.update(); 
 
@@ -428,13 +547,4 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     document.getElementById('colorBoxDisplay').style.backgroundColor = `rgb(${r_disp}, ${g_disp}, ${b_disp})`;
     document.getElementById('srgbText').innerText = `sRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
-});
-
-document.getElementById('btnExport').addEventListener('click', () => {
-    if (!sampleData) { alert("Requiere muestra."); return; }
-    let csvContent = "data:text/csv;charset=utf-8,Wavelength(nm),Intensity\n";
-    for (let i = 0; i < 288; i++) csvContent += `${nm[i]},${sampleData[i]}\n`;
-    const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `Espectro_${new Date().getHours()}${new Date().getMinutes()}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 });
