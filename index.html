@@ -12,8 +12,33 @@
             background-color: #f4f4f9;
             margin: 0;
             padding: 20px;
-            display: flex;
+            box-sizing: border-box;
+            height: 100vh;
         }
+
+        /* --- PANTALLA DE LOGIN --- */
+        #loginContainer {
+            max-width: 320px;
+            margin: 100px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        #loginContainer h2 { margin: 0; text-align: center; color: #2c3e50; }
+        #loginContainer input { padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px; }
+        #loginError { color: #e74c3c; font-size: 12px; text-align: center; margin: 0; min-height: 15px; }
+        
+        /* --- CONTENEDOR PRINCIPAL DE LA APP --- */
+        #appContainer {
+            display: none; /* Oculto hasta iniciar sesión */
+            flex-direction: row;
+            height: 100%;
+        }
+
         .sidebar {
             width: 260px;
             background-color: #2c3e50;
@@ -36,6 +61,7 @@
         .btn-blue { background-color: #2980b9; }
         .btn-green { background-color: #27ae60; }
         .btn-danger { background-color: #c0392b; }
+        .btn:disabled { background-color: #95a5a6; cursor: not-allowed; }
         
         select, input[type="text"] {
             width: 100%; padding: 6px; margin: 4px 0 8px 0; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; font-size: 12px;
@@ -50,23 +76,9 @@
             flex-direction: column;
         }
         
-        /* Banner superior de información de la muestra */
-        .sample-info-banner {
-            background: #eef2f7;
-            border-left: 5px solid #2980b9;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-        }
-        .sample-info-banner strong { color: #2c3e50; }
-        .sample-info-banner span { color: #2980b9; font-weight: 600; }
-
         .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; background: #34495e; padding: 10px; border-radius: 5px; }
 
+        /* VISTAS INTERCAMBIABLES */
         #viewMonitor { display: block; }
         #viewColorAnalysis { 
             display: none; 
@@ -93,88 +105,93 @@
 </head>
 <body>
 
-    <div class="sidebar">
-        <!-- SECCIÓN 1: BASE DE DATOS -->
-        <h2>📂 Base de Datos</h2>
-        <p id="db-status" style="font-size: 11px; margin-top:0; color:#f1c40f;">⏳ Buscando muestras_espectro.db...</p>
-
-        <!-- SECCIÓN 2: CARGA INDEPENDIENTE DESDE BD -->
-        <h2>🔍 Cargar Referencias (BD)</h2>
+    <!-- PANTALLA DE LOGIN -->
+    <div id="loginContainer">
+        <h2>Espectro-IA</h2>
+        <p id="login-db-status" style="color: #f39c12; font-size: 12px; text-align: center; margin: 0;">⏳ Cargando base de datos...</p>
         
-        <div style="margin-bottom: 10px;">
-            <label>1. Blanco:</label>
-            <select id="select-blancos"><option value="">Cargando...</option></select>
-            <button class="btn btn-green" id="btnLoadBlanco">📥 Fija como Blanco</button>
-        </div>
+        <input type="text" id="loginUser" placeholder="Usuario">
+        <input type="password" id="loginPass" placeholder="Contraseña">
         
-        <div style="margin-bottom: 10px;">
-            <label>2. Negro:</label>
-            <select id="select-negros"><option value="">Cargando...</option></select>
-            <button class="btn btn-green" id="btnLoadNegro">📥 Fija como Negro</button>
-        </div>
-        
-        <div style="margin-bottom: 10px;">
-            <label>3. Muestra (Visualizar):</label>
-            <select id="select-muestras"><option value="">Cargando...</option></select>
-            <button class="btn btn-green" id="btnLoadMuestra">📥 Cargar Muestra</button>
-        </div>
-
-        <!-- SECCIÓN 3: CONTROL Y GUARDADO -->
-        <h2>🔴 Control y Guardado</h2>
-        <button class="btn" id="btnMonitor">Iniciar Monitoreo Vivo</button>
-        <button class="btn" id="btnSample">Grabar Muestra en BD</button>
-
-        <!-- SECCIÓN 4: ANÁLISIS -->
-        <h2>📊 Análisis</h2>
-        <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
-        <button class="btn btn-blue" id="btnColor">Color Espectral</button>
-        <button class="btn btn-danger" id="btnStop">Detener Monitor</button>
-
-        <div class="status" id="statusPanel">
-            <strong>Estado de Memoria (RAM):</strong><br><br>
-            Blanco: ❌ Vacío<br>
-            Negro: ❌ Vacío<br>
-            Muestra: ❌ Vacía
-        </div>
+        <button class="btn btn-blue" id="btnLogin" disabled>Ingresar</button>
+        <p id="loginError"></p>
     </div>
 
-    <div class="main-content">
-        <!-- Banner superior con los datos de la muestra activa -->
-        <div class="sample-info-banner">
-            <div>
-                <strong>Muestra actual:</strong> <span id="infoNombreMuestra">Ninguna (Monitoreo en vivo)</span>
-            </div>
-            <div>
-                <strong>Fecha:</strong> <span id="infoFechaMuestra">--/--/----</span>
-            </div>
-        </div>
+    <!-- APLICACIÓN PRINCIPAL -->
+    <div id="appContainer">
+        <div class="sidebar">
+            <!-- SECCIÓN 1: BASE DE DATOS -->
+            <h2>📂 Base de Datos</h2>
+            <p id="db-status" style="font-size: 11px; margin-top:0; color:#2ecc71;">✔️ Enlazada a muestras_espectro.db</p>
 
-        <div id="viewMonitor">
-            <h2 id="chartTitle">Respuesta Espectral</h2>
-            <div class="canvas-container" style="height: 450px;">
-                <canvas id="spectroChart"></canvas>
-            </div>
-        </div>
-
-        <div id="viewColorAnalysis">
-            <div class="panel" id="panelChromaticity">
-                <h3>Diagrama de Cromaticidad CIE1976UCS</h3>
-                <div class="canvas-container" id="chromaContainer">
-                    <canvas id="chromaticityChart"></canvas>
-                </div>
+            <!-- SECCIÓN 2: CARGA INDEPENDIENTE DESDE BD -->
+            <h2>🔍 Cargar Referencias (BD)</h2>
+            
+            <div style="margin-bottom: 10px;">
+                <label>1. Blanco:</label>
+                <select id="select-blancos"><option value="">Cargando...</option></select>
+                <button class="btn btn-green" id="btnLoadBlanco">📥 Fija como Blanco</button>
             </div>
             
-            <div class="panel" id="panelDistribution">
-                <h3>Distribución Espectral</h3>
-                <div class="canvas-container" style="height: 250px;">
-                    <canvas id="distributionChart"></canvas>
+            <div style="margin-bottom: 10px;">
+                <label>2. Negro:</label>
+                <select id="select-negros"><option value="">Cargando...</option></select>
+                <button class="btn btn-green" id="btnLoadNegro">📥 Fija como Negro</button>
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label>3. Muestra (Visualizar):</label>
+                <select id="select-muestras"><option value="">Cargando...</option></select>
+                <button class="btn btn-green" id="btnLoadMuestra">📥 Cargar Muestra</button>
+            </div>
+
+            <!-- SECCIÓN 3: SIMULADOR Y GRABADO -->
+            <h2>🔴 Control y Guardado</h2>
+            <button class="btn" id="btnMonitor">Iniciar Monitoreo Vivo</button>
+            <button class="btn" id="btnSample">Grabar Muestra en BD</button>
+
+            <!-- SECCIÓN 4: ANÁLISIS -->
+            <h2>📊 Análisis</h2>
+            <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
+            <button class="btn btn-blue" id="btnColor">Color Espectral</button>
+            <button class="btn btn-danger" id="btnStop">Detener Monitor</button>
+
+            <div class="status" id="statusPanel">
+                <strong>Estado de Memoria (RAM):</strong><br><br>
+                Blanco: ❌ Vacío<br>
+                Negro: ❌ Vacío<br>
+                Muestra: ❌ Vacía
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="viewMonitor">
+                <h2 id="chartTitle">Respuesta Espectral</h2>
+                <div class="canvas-container" style="height: 450px;">
+                    <canvas id="spectroChart"></canvas>
                 </div>
             </div>
 
-            <div class="panel" id="panelColorBox">
-                <h3>Color Espectral</h3>
-                <div id="colorBoxDisplay"></div>
-                <div class="srgb-val" id="srgbText">SRGB= [0.000, 0.000, 0.000]</div>
+            <div id="viewColorAnalysis">
+                <div class="panel" id="panelChromaticity">
+                    <h3>Diagrama de Cromaticidad CIE1976UCS</h3>
+                    <div class="canvas-container" id="chromaContainer">
+                        <canvas id="chromaticityChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="panel" id="panelDistribution">
+                    <h3>Distribución Espectral</h3>
+                    <div class="canvas-container" style="height: 250px;">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="panel" id="panelColorBox">
+                    <h3>Color Espectral</h3>
+                    <div id="colorBoxDisplay"></div>
+                    <div class="srgb-val" id="srgbText">SRGB= [0.000, 0.000, 0.000]</div>
+                </div>
             </div>
         </div>
     </div>
