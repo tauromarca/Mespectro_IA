@@ -100,7 +100,6 @@ function XYZto_sRGB(X, Y, Z) {
     let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
-
     let gamma = (c) => {
         let abs_c = Math.abs(c);
         let res = abs_c <= 0.0031308 ? 12.92 * abs_c : 1.055 * Math.pow(abs_c, 1 / 2.4) - 0.055;
@@ -148,6 +147,10 @@ let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 let db = null; 
 
+// Variables para almacenar info de la muestra actual
+let currentSampleName = "Desconocida";
+let currentSampleDate = "--";
+
 // ==========================================
 // 4. AUTENTICACIÓN Y CARGA DE BASE DE DATOS
 // ==========================================
@@ -177,7 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
-// LOGIC DE LOGIN SEGURO (Evita SQL Injection mediante bind)
+// LOGIC DE LOGIN SEGURO 
 document.getElementById('btnLogin').addEventListener('click', () => {
     const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
@@ -257,11 +260,14 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
         if (tipoDestino === 'negro') { darkData = arrEspectro; }
         if (tipoDestino === 'muestra') { 
             sampleData = arrEspectro; 
+            currentSampleName = pk.nombre;
+            currentSampleDate = pk.fecha;
+            
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
             
             // ACTUALIZA EL TÍTULO CON NOMBRE Y FECHA EXACTA
-            document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${pk.nombre} | Fecha: ${pk.fecha}`;
+            document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
             spectroChart.config.type = 'bar';
             spectroChart.data.datasets[0].data = sampleData;
             spectroChart.data.datasets[0].pointRadius = 0;
@@ -276,7 +282,7 @@ document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarR
 document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
 document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
 
-// Guardar Muestra y Exportar BD Automáticamente (SIN BOTÓN MANUAL DE EXPORTAR)
+// Guardar Muestra y Exportar BD Automáticamente
 function exportarBD() {
     if (!db) return;
     const data = db.export();
@@ -311,6 +317,11 @@ document.getElementById('btnSample').addEventListener('click', () => {
     const sql = `INSERT INTO muestras (${cols}) VALUES (${places})`;
     try {
         db.run(sql, vals);
+        
+        currentSampleName = nombre;
+        currentSampleDate = fechaStr;
+        document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
+        
         actualizarListasDesplegables(); 
         exportarBD(); // Descarga invisible e inmediata
     } catch (e) {
@@ -413,12 +424,12 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
     data: {
         datasets: [
             {
-                label: "sRGB Triangle",
+                label: "Triangulo sRGB", // Modificado según el requerimiento
                 data: [ {x:0.4508, y:0.5229}, {x:0.1250, y:0.5625}, {x:0.1754, y:0.1579}, {x:0.4508, y:0.5229} ],
                 borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2.5, pointBackgroundColor: "red", pointRadius: 5
             },
             {
-                label: "Muestra",
+                label: "Muestra", // Se actualizará dinámicamente en btnColor
                 data: [],
                 backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
             }
@@ -493,10 +504,8 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    // Mantener el nombre si existía
-    let currentTitle = document.getElementById('chartTitle').innerText;
-    let baseTitle = currentTitle.includes("Muestra:") ? currentTitle.split("|")[1] + "|" + currentTitle.split("|")[2] : "";
-    document.getElementById('chartTitle').innerText = `Absorbancia ${baseTitle ? "| " + baseTitle : ""}`;
+    // Título Dinámico de Absorbancia
+    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
     
     spectroChart.config.type = 'line'; 
     spectroChart.data.datasets[0].data = absorbanceData;
@@ -514,6 +523,9 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
+
+    // Título Dinámico en Vista Color
+    document.getElementById('colorAnalysisTitle').innerText = `Análisis de Color | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
 
     let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
     let spectrumValsCoords = [];
@@ -542,7 +554,9 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     let srgb = XYZto_sRGB(X, Y, Z);
 
+    // Posicionar Muestra y cambiar su leyenda dinámicamente
     chromaticityChart.data.datasets[1].data = [coords];
+    chromaticityChart.data.datasets[1].label = `Muestra: ${currentSampleName}`;
     chromaticityChart.update();
 
     distributionChart.data.datasets[0].data = spectrumValsCoords;
