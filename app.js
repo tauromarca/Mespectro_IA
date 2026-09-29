@@ -30,7 +30,7 @@ for (let i = 1; i <= 288; i++) {
 }
 
 // ==========================================
-// 2. TABLA CIE UNIFICADA (340nm - 850nm)
+// 2. TABLAS CIE Y FUNCIONES
 // ==========================================
 const CIE_CMF = [
     {wl: 340, x: 0.0000, y: 0.0000, z: 0.0000}, {wl: 350, x: 0.0000, y: 0.0000, z: 0.0000},
@@ -147,87 +147,73 @@ for (let wl = 380; wl <= 700; wl += 5) {
 let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 
-let db = null; // Instancia SQLite global
+let db = null; // Base de datos SQLite Global
 
-// Inicializar SQL.js al cargar la página
+// AL CARGAR LA PÁGINA: Inicializar SQL.js y descargar la BD automáticamente
 document.addEventListener("DOMContentLoaded", async () => {
     try {
         const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
         window.SQL = SQL;
-        console.log("SQL.js cargado correctamente.");
+        
+        // Cargar archivo muestras_espectro.db directamente desde la ruta del servidor
+        const response = await fetch("muestras_espectro.db");
+        if (!response.ok) throw new Error("No se encontró muestras_espectro.db en el servidor.");
+        
+        const buffer = await response.arrayBuffer();
+        db = new SQL.Database(new Uint8Array(buffer));
+        
+        document.getElementById('db-status').innerHTML = "✔️ BD Cargada.";
+        document.getElementById('db-status').style.color = "#2ecc71";
+        document.getElementById('btnExportDB').style.display = "block";
+        
+        actualizarListasDesplegables();
+
     } catch (err) {
-        console.error("Error cargando SQL.js:", err);
+        console.error("Error cargando la base de datos:", err);
+        document.getElementById('db-status').innerHTML = "❌ Error al cargar BD. Debe alojarse en un servidor Web.";
+        document.getElementById('db-status').style.color = "#e74c3c";
     }
 });
 
-// ==========================================
-// 4. LECTURA, BÚSQUEDA Y GRABADO EN SQLITE
-// ==========================================
-
-// Cargar Archivo .db
-document.getElementById('fileDB').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function() {
-        const Uints = new Uint8Array(reader.result);
-        db = new window.SQL.Database(Uints);
-        document.getElementById('btnExportDB').style.display = "block";
-        alert("¡Base de datos cargada exitosamente!");
-    };
-    reader.readAsArrayBuffer(file);
-});
-
-// Exportar Base de datos
-document.getElementById('btnExportDB').addEventListener('click', () => {
+// Función centralizada para poblar los 3 selects (Blancos, Negros, Muestras)
+function actualizarListasDesplegables() {
     if (!db) return;
-    const data = db.export();
-    const blob = new Blob([data], {type: "application/octet-stream"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "muestras_espectro.db";
-    a.click();
-});
+    llenarSelect('blancos', 'nombre_blanco', 'select-blancos');
+    llenarSelect('negros', 'nombre_negro', 'select-negros');
+    llenarSelect('muestras', 'nombre_muestra', 'select-muestras');
+}
 
-// Listar Registros según la tabla
-document.getElementById('btnListDB').addEventListener('click', () => {
-    if (!db) { alert("Primero debes cargar la base de datos."); return; }
-    
-    const tabla = document.getElementById('dbTableSelect').value;
-    let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
-
+function llenarSelect(tabla, colNombre, selectId) {
+    const sel = document.getElementById(selectId);
+    sel.innerHTML = '';
     try {
         const query = `SELECT ${colNombre}, codigo_fermentacion, fecha FROM ${tabla}`;
         const res = db.exec(query);
-        const sel = document.getElementById('dbRecordSelect');
-        sel.innerHTML = '';
-
         if (res.length > 0) {
             res[0].values.forEach(row => {
                 let opt = document.createElement('option');
-                opt.value = JSON.stringify({ nombre: row[0], fecha: row[2] }); // Llaves para cargar
+                opt.value = JSON.stringify({ nombre: row[0], fecha: row[2] });
                 opt.text = `${row[0]} | Fecha: ${row[2]}`;
                 sel.appendChild(opt);
             });
         } else {
             sel.innerHTML = '<option value="">Tabla vacía</option>';
         }
-    } catch (err) {
-        alert("Error al leer la tabla: " + err.message);
+    } catch (e) {
+        sel.innerHTML = '<option value="">Error leyendo BD</option>';
     }
-});
+}
 
-// Cargar Registro a la Memoria y Gráfico
-document.getElementById('btnLoadRecord').addEventListener('click', () => {
+// Carga Dinámica desde los Selects a la Memoria
+function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
-    const tabla = document.getElementById('dbTableSelect').value;
-    const seleccion = document.getElementById('dbRecordSelect').value;
-    
+    const seleccion = document.getElementById(selectId).value;
     if (!seleccion) { alert("Seleccione un registro válido."); return; }
     
     const pk = JSON.parse(seleccion);
     let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
 
+    // Requisito: codigo_fermentacion = 1
     const query = `SELECT * FROM ${tabla} WHERE ${colNombre}='${pk.nombre}' AND fecha='${pk.fecha}' AND codigo_fermentacion=1`;
     const res = db.exec(query);
 
@@ -241,9 +227,9 @@ document.getElementById('btnLoadRecord').addEventListener('click', () => {
             arrEspectro.push(colIndex !== -1 ? values[colIndex] : 0);
         }
 
-        if (tabla === 'blancos') { blankData = arrEspectro; alert("Blanco cargado."); }
-        if (tabla === 'negros') { darkData = arrEspectro; alert("Negro cargado."); }
-        if (tabla === 'muestras') { 
+        if (tipoDestino === 'blanco') { blankData = arrEspectro; alert("Blanco cargado."); }
+        if (tipoDestino === 'negro') { darkData = arrEspectro; alert("Negro cargado."); }
+        if (tipoDestino === 'muestra') { 
             sampleData = arrEspectro; 
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
@@ -254,15 +240,22 @@ document.getElementById('btnLoadRecord').addEventListener('click', () => {
             alert("Muestra cargada.");
         }
         updateStatus();
+    } else {
+        alert("Registro no encontrado en la base de datos.");
     }
-});
+}
+
+// Escuchadores de Carga Independiente
+document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarRegistroDesdeSelect('blancos', 'blanco', 'select-blancos'));
+document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
+document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
 
 // Guardar Registro en la Base de Datos
 function guardarEnBD(tabla) {
-    if (!db) { alert("Cargue primero la BD para grabar."); return; }
+    if (!db) { alert("Base de datos no cargada."); return; }
     
     let nombre = prompt(`Ingrese nombre para guardar en tabla ${tabla.toUpperCase()}:`);
-    if (!nombre) return; // Canceló
+    if (!nombre) return; 
 
     let dataToSave = (tabla === 'blancos') ? blankData : (tabla === 'negros' ? darkData : sampleData);
     if (!dataToSave) { alert("No hay datos en memoria para guardar."); return; }
@@ -271,6 +264,7 @@ function guardarEnBD(tabla) {
     const fechaStr = now.toLocaleDateString('es-CL').replace(/\//g, '-');
     let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
 
+    // Armado de SQL
     let cols = `${colNombre}, codigo_fermentacion, fecha`;
     let places = `?, 1, ?`;
     let vals = [nombre, fechaStr];
@@ -284,24 +278,31 @@ function guardarEnBD(tabla) {
     const sql = `INSERT INTO ${tabla} (${cols}) VALUES (${places})`;
     try {
         db.run(sql, vals);
-        alert(`Guardado con éxito en la BD.\n¡Recuerde descargar la BD al finalizar!`);
-        // Actualizar la lista desplegable si estamos viendo esa misma tabla
-        if (document.getElementById('dbTableSelect').value === tabla) {
-            document.getElementById('btnListDB').click();
-        }
+        alert(`Guardado con éxito.\n¡Presione "Descargar BD" para no perder sus datos al salir!`);
+        actualizarListasDesplegables(); // Se refrescan las 3 listas
     } catch (e) {
         alert("Error al guardar: " + e.message);
     }
 }
 
-// Botones de Grabar
+// Botones de Guardar y Exportar
 document.getElementById('btnDark').addEventListener('click', () => { darkData = [...currentData]; updateStatus(); guardarEnBD('negros'); });
 document.getElementById('btnBlank').addEventListener('click', () => { blankData = [...currentData]; updateStatus(); guardarEnBD('blancos'); });
 document.getElementById('btnSample').addEventListener('click', () => { sampleData = [...currentData]; updateStatus(); guardarEnBD('muestras'); });
 
+document.getElementById('btnExportDB').addEventListener('click', () => {
+    if (!db) return;
+    const data = db.export();
+    const blob = new Blob([data], {type: "application/octet-stream"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "muestras_espectro.db";
+    a.click();
+});
+
 function updateStatus() {
     document.getElementById('statusPanel').innerHTML = `
-        <strong>Estado de Datos en RAM:</strong><br><br>
+        <strong>Estado de Memoria (RAM):</strong><br><br>
         Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
         Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
         Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
@@ -309,7 +310,7 @@ function updateStatus() {
 }
 
 // ==========================================
-// 5. CONFIGURACIÓN DE LOS GRÁFICOS
+// 4. CONFIGURACIÓN DE LOS GRÁFICOS
 // ==========================================
 const ctx = document.getElementById('spectroChart').getContext('2d');
 let spectroChart = new Chart(ctx, {
@@ -422,7 +423,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
 });
 
 // ==========================================
-// 6. EVENTOS DE LOS BOTONES
+// 5. MANEJO DE VISTAS
 // ==========================================
 function setView(viewMode) {
     if (viewMode === 'monitor') {
@@ -432,6 +433,9 @@ function setView(viewMode) {
     }
 }
 
+// ==========================================
+// 6. EVENTOS DE LOS BOTONES
+// ==========================================
 document.getElementById('btnMonitor').addEventListener('click', () => {
     isMonitoring = true; setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
     spectroChart.config.type = 'bar'; spectroChart.data.datasets[0].backgroundColor = bgColors; spectroChart.data.datasets[0].borderColor = bgColors; spectroChart.options.scales.y.max = 1050;
@@ -448,6 +452,7 @@ document.getElementById('btnMonitor').addEventListener('click', () => {
 
 document.getElementById('btnStop').addEventListener('click', () => { isMonitoring = false; clearInterval(monitorInterval); });
 
+// ABSORBANCIA 
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
@@ -484,6 +489,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
     spectroChart.update();
 });
 
+// COLOR ESPECTRAL
 document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
