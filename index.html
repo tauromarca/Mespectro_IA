@@ -76,8 +76,6 @@
             flex-direction: column;
             overflow-y: auto;
         }
-        
-        .status { margin-top: 20px; font-size: 12px; color: #bdc3c7; background: #34495e; padding: 10px; border-radius: 5px; }
 
         /* VISTAS INTERCAMBIABLES */
         #viewMonitor { display: block; }
@@ -122,11 +120,8 @@
     <!-- APLICACIÓN PRINCIPAL -->
     <div id="appContainer">
         <div class="sidebar">
-            <!-- SECCIÓN 1: BASE DE DATOS -->
-            <h2>📂 Base de Datos</h2>
-            <p id="db-status" style="font-size: 11px; margin-top:0; color:#2ecc71;">✔️ Enlazada a muestras_espectro.db</p>
 
-            <!-- SECCIÓN 2: CARGA INDEPENDIENTE DESDE BD -->
+            <!-- SECCIÓN 1: CARGA INDEPENDIENTE DESDE BD -->
             <h2>🔍 Cargar Referencias (BD)</h2>
             
             <div style="margin-bottom: 10px;">
@@ -147,23 +142,17 @@
                 <button class="btn btn-green" id="btnLoadMuestra">📥 Cargar Muestra</button>
             </div>
 
-            <!-- SECCIÓN 3: SIMULADOR Y GRABADO -->
+            <!-- SECCIÓN 2: SIMULADOR Y GRABADO -->
             <h2>🔴 Control y Guardado</h2>
             <button class="btn" id="btnMonitor">Iniciar Monitoreo Vivo</button>
             <button class="btn" id="btnSample">Grabar Muestra en BD</button>
 
-            <!-- SECCIÓN 4: ANÁLISIS -->
+            <!-- SECCIÓN 3: ANÁLISIS -->
             <h2>📊 Análisis</h2>
             <button class="btn btn-blue" id="btnAbsorbance">Ver Absorbancia</button>
             <button class="btn btn-blue" id="btnColor">Color Espectral</button>
             <button class="btn btn-danger" id="btnStop">Detener Monitor</button>
 
-            <div class="status" id="statusPanel">
-                <strong>Estado de Memoria (RAM):</strong><br><br>
-                Blanco: ❌ Vacío<br>
-                Negro: ❌ Vacío<br>
-                Muestra: ❌ Vacía
-            </div>
         </div>
 
         <div class="main-content">
