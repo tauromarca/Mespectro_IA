@@ -303,4 +303,261 @@ document.getElementById('btnExportDB').addEventListener('click', () => {
     const blob = new Blob([data], {type: "application/octet-stream"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "muestras_e
+    a.download = "muestras_espectro.db";
+    a.click();
+});
+
+function updateStatus() {
+    document.getElementById('statusPanel').innerHTML = `
+        <strong>Estado de Memoria (RAM):</strong><br><br>
+        Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
+    `;
+}
+
+// ==========================================
+// 4. CONFIGURACIÓN DE LOS GRÁFICOS
+// ==========================================
+const ctx = document.getElementById('spectroChart').getContext('2d');
+let spectroChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: nm,
+        datasets: [{ label: 'Intensidad', data: currentData, backgroundColor: bgColors, borderColor: bgColors, borderWidth: 1, barPercentage: 1.0, categoryPercentage: 1.0 }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: {duration: 0}, plugins: { legend: {display: false} },
+        scales: { x: { title: { display: true, text: 'Longitud de Onda en nm' }, ticks: { maxRotation: 90, minRotation: 90 }, grid: {display: false} }, y: { title: { display: true, text: 'counts/(μW/cm2)' }, min: 0, max: 1050 } }
+    }
+});
+
+const cieBackgroundPlugin = {
+    id: 'cieBackground',
+    beforeDatasetsDraw(chart) {
+        const {ctx, chartArea, scales: {x, y}} = chart;
+        if (!chartArea) return;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
+        for (let i = 1; i < locusData.length; i++) {
+            ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
+        }
+        ctx.closePath();
+        ctx.clip();
+
+        const step = 2;
+        for (let py = chartArea.top; py < chartArea.bottom; py += step) {
+            for (let px = chartArea.left; px < chartArea.right; px += step) {
+                let valU = x.getValueForPixel(px);
+                let valV = y.getValueForPixel(py);
+                let color = uvToColorHex(valU, valV);
+                if (color) { ctx.fillStyle = color; ctx.fillRect(px, py, step + 0.5, step + 0.5); }
+            }
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x.getPixelForValue(locusData[0].x), y.getPixelForValue(locusData[0].y));
+        for (let i = 1; i < locusData.length; i++) {
+            ctx.lineTo(x.getPixelForValue(locusData[i].x), y.getPixelForValue(locusData[i].y));
+        }
+        ctx.closePath();
+        ctx.lineWidth = 2.5; ctx.strokeStyle = 'black'; ctx.stroke();
+        ctx.restore();
+    },
+    afterDatasetsDraw(chart) {
+        const {ctx, scales: {x, y}} = chart;
+        ctx.save();
+        ctx.fillStyle = 'black'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+        const etiquetasVisibles = [420, 440, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 620, 680];
+        locusData.forEach(p => {
+            if (etiquetasVisibles.includes(p.wl)) {
+                let px = x.getPixelForValue(p.x), py = y.getPixelForValue(p.y);
+                ctx.beginPath(); ctx.arc(px, py, 3, 0, 2 * Math.PI); ctx.fill();
+
+                let ox = 0, oy = 0;
+                if (p.wl <= 470) { ox = -14; oy = 0; }
+                else if (p.wl <= 520) { ox = -16; oy = 0; }
+                else if (p.wl <= 560) { ox = 0; oy = -12; }
+                else { ox = 14; oy = -8; }
+
+                ctx.fillText(p.wl, px + ox, py + oy);
+            }
+        });
+        ctx.restore();
+    }
+};
+
+document.getElementById('chromaContainer').style.height = "400px";
+document.getElementById('chromaContainer').style.width = "400px";
+document.getElementById('chromaContainer').style.margin = "0 auto";
+
+let chromaticityChart = new Chart(document.getElementById('chromaticityChart').getContext('2d'), {
+    type: 'scatter',
+    plugins: [cieBackgroundPlugin],
+    data: {
+        datasets: [
+            {
+                label: "sRGB Triangle",
+                data: [ {x:0.4508, y:0.5229}, {x:0.1250, y:0.5625}, {x:0.1754, y:0.1579}, {x:0.4508, y:0.5229} ],
+                borderColor: "red", backgroundColor: "transparent", showLine: true, borderWidth: 2.5, pointBackgroundColor: "red", pointRadius: 5
+            },
+            {
+                label: "Muestra",
+                data: [],
+                backgroundColor: "black", borderColor: "white", borderWidth: 2, pointRadius: 8, z: 10
+            }
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: {duration: 0},
+        scales: {
+            x: { type: 'linear', position: 'bottom', min: -0.1, max: 0.7, title: { display: true, text: "CIE u'" } },
+            y: { type: 'linear', min: -0.1, max: 0.7, title: { display: true, text: "CIE v'" } }
+        },
+        plugins: { legend: { position: 'top', labels: {usePointStyle: true} } }
+    }
+});
+
+let distributionChart = new Chart(document.getElementById('distributionChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: true, borderColor: "black" }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display: false} }, scales: { x: { type: 'linear', position: 'bottom', min: 340, max: 850, title: { display: true, text: 'Longitud de Onda (nm)' }, ticks: { stepSize: 50 } }, y: { display: false, min: 0 } } }
+});
+
+// ==========================================
+// 5. MANEJO DE VISTAS
+// ==========================================
+function setView(viewMode) {
+    if (viewMode === 'monitor') {
+        document.getElementById('viewMonitor').style.display = 'block'; document.getElementById('viewColorAnalysis').style.display = 'none';
+    } else {
+        document.getElementById('viewMonitor').style.display = 'none'; document.getElementById('viewColorAnalysis').style.display = 'grid';
+    }
+}
+
+// ==========================================
+// 6. EVENTOS DE LOS BOTONES
+// ==========================================
+document.getElementById('btnMonitor').addEventListener('click', () => {
+    isMonitoring = true; setView('monitor'); document.getElementById('chartTitle').innerText = "Respuesta Espectral (Monitoreo Vivo)";
+    spectroChart.config.type = 'bar'; spectroChart.data.datasets[0].backgroundColor = bgColors; spectroChart.data.datasets[0].borderColor = bgColors; spectroChart.options.scales.y.max = 1050;
+    if (monitorInterval) clearInterval(monitorInterval);
+    monitorInterval = setInterval(() => {
+        let newData = [];
+        for (let i = 0; i < nm.length; i++) {
+            let wl = nm[i], base = wl < 580 ? 120 + (wl - 301) * 0.2 : (wl < 700 ? 180 + ((wl - 580) / 120) * 450 : 630 + (wl - 700) * 0.5);
+            newData.push(Math.max(100, Math.min(1000, base + (Math.floor(Math.random() * 70) - 35))));
+        }
+        currentData = newData; spectroChart.data.datasets[0].data = currentData; spectroChart.update('none');
+    }, 100);
+});
+
+document.getElementById('btnStop').addEventListener('click', () => { isMonitoring = false; clearInterval(monitorInterval); });
+
+// ABSORBANCIA 
+document.getElementById('btnAbsorbance').addEventListener('click', () => {
+    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
+    isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
+    
+    let absorbanceData = [];
+    let pRadiuses = [], pColors = [];
+
+    for (let i = 0; i < 288; i++) {
+        let trans = Math.max(1e-4, (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]));
+        absorbanceData.push(Math.log10(1 / trans));
+    }
+
+    for (let i = 0; i < 288; i++) {
+        let isPeak = false;
+        if (i > 0 && i < 287) {
+            if (absorbanceData[i] > 0 && absorbanceData[i] > absorbanceData[i-1] && absorbanceData[i] > absorbanceData[i+1]) {
+                isPeak = true;
+            }
+        }
+        pRadiuses.push(isPeak ? 5 : 0);
+        pColors.push(isPeak ? 'red' : 'transparent');
+    }
+
+    document.getElementById('chartTitle').innerText = "Absorbancia";
+    spectroChart.config.type = 'line'; 
+    spectroChart.data.datasets[0].data = absorbanceData;
+    spectroChart.data.datasets[0].backgroundColor = 'rgba(255, 99, 132, 0.2)'; 
+    spectroChart.data.datasets[0].borderColor = 'red';
+    spectroChart.data.datasets[0].borderWidth = 1.5;
+    spectroChart.data.datasets[0].pointRadius = pRadiuses;
+    spectroChart.data.datasets[0].pointBackgroundColor = pColors;
+    spectroChart.data.datasets[0].pointBorderColor = pColors;
+    spectroChart.options.scales.y.max = undefined; 
+    spectroChart.update();
+});
+
+// COLOR ESPECTRAL
+document.getElementById('btnColor').addEventListener('click', () => {
+    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
+    isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
+
+    let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
+    let spectrumValsCoords = [];
+
+    for (let i = 0; i < 288; i++) {
+        let val = (sampleData[i] - darkData[i]) / Math.max(1e-4, blankData[i] - darkData[i]);
+        val = Math.max(0, Math.min(2.5, val));
+        
+        spectrumValsCoords.push({ x: nm[i], y: val });
+
+        let cmf = getCMF(nm[i]); 
+        let ill = getD65(nm[i]); 
+
+        sum_X += val * cmf.x * ill;
+        sum_Y += val * cmf.y * ill;
+        sum_Z += val * cmf.z * ill;
+        ref_Y += cmf.y * ill;
+    }
+
+    let X = sum_X / Math.max(1e-4, ref_Y);
+    let Y = sum_Y / Math.max(1e-4, ref_Y);
+    let Z = sum_Z / Math.max(1e-4, ref_Y);
+
+    let denom = X + 15 * Y + 3 * Z;
+    let coords = denom === 0 ? {x: 0.2105, y: 0.4739} : {x:(4 * X) / denom, y:(9 * Y) / denom};
+
+    let srgb = XYZto_sRGB(X, Y, Z);
+
+    chromaticityChart.data.datasets[1].data = [coords];
+    chromaticityChart.update();
+
+    distributionChart.data.datasets[0].data = spectrumValsCoords;
+    distributionChart.update(); 
+
+    let chartArea = distributionChart.chartArea;
+    if (chartArea) {
+        let ctxDist = document.getElementById('distributionChart').getContext('2d');
+        let gradient = ctxDist.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+
+        const mapWl = (wl) => Math.max(0, Math.min(1, (wl - 340) / (850 - 340)));
+
+        gradient.addColorStop(mapWl(340), "black");
+        gradient.addColorStop(mapWl(380), "darkviolet");
+        gradient.addColorStop(mapWl(440), "blue");
+        gradient.addColorStop(mapWl(510), "green");
+        gradient.addColorStop(mapWl(580), "yellow");
+        gradient.addColorStop(mapWl(645), "red");
+        gradient.addColorStop(mapWl(780), "darkred");
+        gradient.addColorStop(mapWl(850), "black");
+
+        distributionChart.data.datasets[0].backgroundColor = gradient;
+        distributionChart.update();
+    }
+
+    let r_disp = Math.max(0, Math.min(255, Math.round(srgb[0] * 255)));
+    let g_disp = Math.max(0, Math.min(255, Math.round(srgb[1] * 255)));
+    let b_disp = Math.max(0, Math.min(255, Math.round(srgb[2] * 255)));
+
+    document.getElementById('colorBoxDisplay').style.backgroundColor = `rgb(${r_disp}, ${g_disp}, ${b_disp})`;
+    document.getElementById('srgbText').innerText = `sRGB= [${srgb[0].toFixed(3)}, ${srgb[1].toFixed(3)}, ${srgb[2].toFixed(3)}]`;
+});
