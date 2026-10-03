@@ -179,7 +179,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
-// LÓGICA DE LOGIN SEGURO Y AUTO-CARGA DE REFERENCIAS
 document.getElementById('btnLogin').addEventListener('click', () => {
     const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
@@ -192,13 +191,9 @@ document.getElementById('btnLogin').addEventListener('click', () => {
         const result = stmt.getAsObject({':u': user, ':p': pass});
         
         if (result && result.username) {
-            // Login Exitoso -> Mostrar App
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('appContainer').style.display = 'flex';
-
-            // AUTO-CARGAR EL PRIMER REGISTRO DE BLANCOS Y NEGROS
             autoCargarReferencias();
-
         } else {
             errorMsg.innerText = "Usuario o contraseña incorrectos.";
         }
@@ -208,11 +203,9 @@ document.getElementById('btnLogin').addEventListener('click', () => {
     }
 });
 
-// Función para cargar los primeros registros automáticamente al entrar
 function autoCargarReferencias() {
     if (!db) return;
     try {
-        // Cargar Blanco (Primer registro)
         let resBlanco = db.exec("SELECT * FROM blancos ORDER BY ROWID ASC LIMIT 1");
         if (resBlanco.length > 0) {
             let columns = resBlanco[0].columns;
@@ -223,10 +216,8 @@ function autoCargarReferencias() {
                 arrBlanco.push(colIndex !== -1 ? values[colIndex] : 0);
             }
             blankData = arrBlanco;
-            console.log("Primer Blanco auto-cargado exitosamente.");
         }
 
-        // Cargar Negro (Primer registro)
         let resNegro = db.exec("SELECT * FROM negros ORDER BY ROWID ASC LIMIT 1");
         if (resNegro.length > 0) {
             let columns = resNegro[0].columns;
@@ -237,16 +228,13 @@ function autoCargarReferencias() {
                 arrNegro.push(colIndex !== -1 ? values[colIndex] : 0);
             }
             darkData = arrNegro;
-            console.log("Primer Negro auto-cargado exitosamente.");
         }
-        
-        updateStatus(); // Refresca el panel de estado RAM
+        updateStatus(); 
     } catch (err) {
         console.error("No se pudieron auto-cargar las referencias: ", err);
     }
 }
 
-// Poblar los 3 selects
 function actualizarListasDesplegables() {
     if (!db) return;
     llenarSelect('blancos', 'nombre_blanco', 'select-blancos');
@@ -275,7 +263,6 @@ function llenarSelect(tabla, colNombre, selectId) {
     }
 }
 
-// Carga Dinámica manual (sin popups)
 function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
     const seleccion = document.getElementById(selectId).value;
@@ -324,7 +311,6 @@ document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarR
 document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
 document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
 
-// Guardar Muestra y Exportar BD Automáticamente
 function exportarBD() {
     if (!db) return;
     const data = db.export();
@@ -380,11 +366,10 @@ document.getElementById('btnSample').addEventListener('click', () => {
         currentSampleName = nombre;
         currentSampleDate = fechaStr;
         
-        // Actualizar UI
         document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
         updateStatus();
         actualizarListasDesplegables(); 
-        exportarBD(); // Descarga invisible e inmediata
+        exportarBD(); 
     } catch (e) {
         alert("Error al guardar: " + e.message);
     }
@@ -506,10 +491,49 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
     }
 });
 
+// ⚠️ CORRECCIÓN CLAVE: El color de fondo (arcoíris) ahora se dibuja dinámicamente con una función "scriptable" para asegurar 
+// que siempre se dibuje incluso si la pantalla cambia de tamaño o se carga oculta. Y se cambió "fill: true" por "fill: 'origin'"
 let distributionChart = new Chart(document.getElementById('distributionChart').getContext('2d'), {
     type: 'line',
-    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: true, borderColor: "black" }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display: false} }, scales: { x: { type: 'linear', position: 'bottom', min: 340, max: 850, title: { display: true, text: 'Longitud de Onda (nm)' }, ticks: { stepSize: 50 } }, y: { display: false, min: 0 } } }
+    data: { 
+        labels: nm, 
+        datasets: [{ 
+            label: 'Distribución', 
+            data: [], 
+            borderWidth: 1.5, 
+            pointRadius: 0, 
+            fill: 'origin', // Corrige la línea diagonal o cortes abruptos
+            borderColor: "black",
+            backgroundColor: function(context) { // Dibuja dinámicamente el gradiente sin importar cuándo sea visible
+                const chart = context.chart;
+                const {ctx, chartArea} = chart;
+                if (!chartArea) return null;
+
+                let gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+                const mapWl = (wl) => Math.max(0, Math.min(1, (wl - 340) / (850 - 340)));
+
+                gradient.addColorStop(mapWl(340), "black");
+                gradient.addColorStop(mapWl(380), "darkviolet");
+                gradient.addColorStop(mapWl(440), "blue");
+                gradient.addColorStop(mapWl(510), "green");
+                gradient.addColorStop(mapWl(580), "yellow");
+                gradient.addColorStop(mapWl(645), "red");
+                gradient.addColorStop(mapWl(780), "darkred");
+                gradient.addColorStop(mapWl(850), "black");
+
+                return gradient;
+            }
+        }] 
+    },
+    options: { 
+        responsive: true, 
+        maintainAspectRatio: false, 
+        plugins: { legend: {display: false} }, 
+        scales: { 
+            x: { type: 'linear', position: 'bottom', min: 340, max: 850, title: { display: true, text: 'Longitud de Onda (nm)' }, ticks: { stepSize: 50 } }, 
+            y: { display: false, min: 0 } 
+        } 
+    }
 });
 
 // ==========================================
@@ -565,7 +589,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
+    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
     
     spectroChart.config.type = 'line'; 
     spectroChart.data.datasets[0].data = absorbanceData;
@@ -584,10 +608,7 @@ document.getElementById('btnColor').addEventListener('click', () => {
     if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra cargados."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
 
-    // Título Principal
     document.getElementById('colorAnalysisTitle').innerText = `Análisis de Color | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
-    
-    // Muestra la clasificación debajo del diagrama
     document.getElementById('chromaClasificacion').innerText = `Clasificación: ${currentSampleClasificacion}`;
 
     let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
@@ -617,33 +638,14 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     let srgb = XYZto_sRGB(X, Y, Z);
 
-    // Posicionar Muestra
     chromaticityChart.data.datasets[1].data = [coords];
     chromaticityChart.data.datasets[1].label = `Muestra: ${currentSampleName}`;
     chromaticityChart.update();
 
+    // ⚠️ Ya no creamos el gradiente manual aquí, la propiedad "backgroundColor: function(context)" 
+    // en la configuración del distributionChart se encarga automáticamente.
     distributionChart.data.datasets[0].data = spectrumValsCoords;
     distributionChart.update(); 
-
-    let chartArea = distributionChart.chartArea;
-    if (chartArea) {
-        let ctxDist = document.getElementById('distributionChart').getContext('2d');
-        let gradient = ctxDist.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-
-        const mapWl = (wl) => Math.max(0, Math.min(1, (wl - 340) / (850 - 340)));
-
-        gradient.addColorStop(mapWl(340), "black");
-        gradient.addColorStop(mapWl(380), "darkviolet");
-        gradient.addColorStop(mapWl(440), "blue");
-        gradient.addColorStop(mapWl(510), "green");
-        gradient.addColorStop(mapWl(580), "yellow");
-        gradient.addColorStop(mapWl(645), "red");
-        gradient.addColorStop(mapWl(780), "darkred");
-        gradient.addColorStop(mapWl(850), "black");
-
-        distributionChart.data.datasets[0].backgroundColor = gradient;
-        distributionChart.update();
-    }
 
     let r_disp = Math.max(0, Math.min(255, Math.round(srgb[0] * 255)));
     let g_disp = Math.max(0, Math.min(255, Math.round(srgb[1] * 255)));
