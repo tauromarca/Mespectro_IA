@@ -148,6 +148,7 @@ let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 let db = null; 
 
+// Variables para almacenar info de la muestra actual
 let currentSampleName = "Desconocida";
 let currentSampleDate = "--";
 let currentSampleClasificacion = "--"; 
@@ -160,12 +161,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
         window.SQL = SQL;
         
+        // Carga silenciosa y automática de la Base de Datos
         const response = await fetch("muestras_espectro.db");
         if (!response.ok) throw new Error("No se encontró la BD en el servidor.");
         
         const buffer = await response.arrayBuffer();
         db = new SQL.Database(new Uint8Array(buffer));
         
+        // BD Lista -> Habilitar Login
         document.getElementById('login-db-status').innerHTML = "✔️ BD Enlazada. Ingrese sus credenciales.";
         document.getElementById('login-db-status').style.color = "#2ecc71";
         document.getElementById('btnLogin').disabled = false;
@@ -179,6 +182,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
+// LÓGICA DE LOGIN SEGURO 
 document.getElementById('btnLogin').addEventListener('click', () => {
     const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
@@ -191,9 +195,13 @@ document.getElementById('btnLogin').addEventListener('click', () => {
         const result = stmt.getAsObject({':u': user, ':p': pass});
         
         if (result && result.username) {
+            // Login Exitoso -> Mostrar App
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('appContainer').style.display = 'flex';
+
+            // AUTO-CARGAR EL PRIMER REGISTRO DE BLANCOS Y NEGROS AL ENTRAR
             autoCargarReferencias();
+
         } else {
             errorMsg.innerText = "Usuario o contraseña incorrectos.";
         }
@@ -203,9 +211,11 @@ document.getElementById('btnLogin').addEventListener('click', () => {
     }
 });
 
+// Función para cargar los primeros registros automáticamente
 function autoCargarReferencias() {
     if (!db) return;
     try {
+        // Cargar Blanco (Primer registro)
         let resBlanco = db.exec("SELECT * FROM blancos ORDER BY ROWID ASC LIMIT 1");
         if (resBlanco.length > 0) {
             let columns = resBlanco[0].columns;
@@ -216,8 +226,10 @@ function autoCargarReferencias() {
                 arrBlanco.push(colIndex !== -1 ? values[colIndex] : 0);
             }
             blankData = arrBlanco;
+            console.log("Primer Blanco auto-cargado exitosamente.");
         }
 
+        // Cargar Negro (Primer registro)
         let resNegro = db.exec("SELECT * FROM negros ORDER BY ROWID ASC LIMIT 1");
         if (resNegro.length > 0) {
             let columns = resNegro[0].columns;
@@ -228,13 +240,16 @@ function autoCargarReferencias() {
                 arrNegro.push(colIndex !== -1 ? values[colIndex] : 0);
             }
             darkData = arrNegro;
+            console.log("Primer Negro auto-cargado exitosamente.");
         }
-        updateStatus(); 
+        
+        updateStatus(); // Refresca el panel de estado RAM
     } catch (err) {
         console.error("No se pudieron auto-cargar las referencias: ", err);
     }
 }
 
+// Poblar los 3 selects dinámicamente incluyendo el Codigo de Fermentación
 function actualizarListasDesplegables() {
     if (!db) return;
     llenarSelect('blancos', 'nombre_blanco', 'select-blancos');
@@ -251,8 +266,9 @@ function llenarSelect(tabla, colNombre, selectId) {
         if (res.length > 0) {
             res[0].values.forEach(row => {
                 let opt = document.createElement('option');
-                opt.value = JSON.stringify({ nombre: row[0], fecha: row[2] });
-                opt.text = `${row[0]} | Fecha: ${row[2]}`;
+                // INCLUYE EL CÓDIGO DE FERMENTACIÓN EN LA LLAVE (row[1])
+                opt.value = JSON.stringify({ nombre: row[0], codigo: row[1], fecha: row[2] });
+                opt.text = `${row[0]} | Cód: ${row[1]} | Fecha: ${row[2]}`;
                 sel.appendChild(opt);
             });
         } else {
@@ -263,6 +279,7 @@ function llenarSelect(tabla, colNombre, selectId) {
     }
 }
 
+// Carga Dinámica desde los Selects usando el código de fermentación dinámico
 function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
     const seleccion = document.getElementById(selectId).value;
@@ -271,7 +288,8 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     const pk = JSON.parse(seleccion);
     let colNombre = tabla === 'muestras' ? 'nombre_muestra' : `nombre_${tabla.slice(0, -1)}`;
 
-    const query = `SELECT * FROM ${tabla} WHERE ${colNombre}='${pk.nombre}' AND fecha='${pk.fecha}' AND codigo_fermentacion=1`;
+    // AHORA USA EL CÓDIGO DINÁMICO QUE ESTÁ EN pk.codigo
+    const query = `SELECT * FROM ${tabla} WHERE ${colNombre}='${pk.nombre}' AND fecha='${pk.fecha}' AND codigo_fermentacion=${pk.codigo}`;
     const res = db.exec(query);
 
     if (res.length > 0) {
@@ -291,12 +309,14 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
             currentSampleName = pk.nombre;
             currentSampleDate = pk.fecha;
             
+            // Buscar si existe el campo "clasificacion"
             let colClasIndex = columns.indexOf('clasificacion');
             currentSampleClasificacion = colClasIndex !== -1 && values[colClasIndex] ? values[colClasIndex] : "Sin clasificación";
             
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
             
+            // ACTUALIZA EL TÍTULO CON NOMBRE Y FECHA EXACTA
             document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
             spectroChart.config.type = 'bar';
             spectroChart.data.datasets[0].data = sampleData;
@@ -307,10 +327,12 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     }
 }
 
+// Escuchadores de Carga Independiente
 document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarRegistroDesdeSelect('blancos', 'blanco', 'select-blancos'));
 document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
 document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
 
+// Guardar Muestra y Exportar BD Automáticamente
 function exportarBD() {
     if (!db) return;
     const data = db.export();
@@ -329,11 +351,15 @@ document.getElementById('btnSample').addEventListener('click', () => {
     let nombre = prompt(`Ingrese nombre para guardar la MUESTRA:`);
     if (!nombre) return; 
 
+    // AHORA PREGUNTA POR EL CÓDIGO DE FERMENTACIÓN
+    let codigoStr = prompt(`Ingrese el Código de Fermentación (Numérico):`, "1");
+    let codigo = parseInt(codigoStr) || 1;
+
     const now = new Date();
     const fechaStr = now.toLocaleDateString('es-CL').replace(/\//g, '-');
     let cols = `nombre_muestra, codigo_fermentacion, fecha`;
-    let places = `?, 1, ?`;
-    let vals = [nombre, fechaStr];
+    let places = `?, ?, ?`;
+    let vals = [nombre, codigo, fechaStr];
 
     let hasClasificacion = false;
     try {
@@ -365,11 +391,10 @@ document.getElementById('btnSample').addEventListener('click', () => {
         
         currentSampleName = nombre;
         currentSampleDate = fechaStr;
-        
         document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
-        updateStatus();
+        
         actualizarListasDesplegables(); 
-        exportarBD(); 
+        exportarBD(); // Descarga invisible e inmediata
     } catch (e) {
         alert("Error al guardar: " + e.message);
     }
@@ -491,20 +516,10 @@ let chromaticityChart = new Chart(document.getElementById('chromaticityChart').g
     }
 });
 
-// ⚠️ CORRECCIÓN CLAVE: El color de fondo (arcoíris) ahora se dibuja dinámicamente con una función "scriptable" para asegurar 
-// que siempre se dibuje incluso si la pantalla cambia de tamaño o se carga oculta. Y se cambió "fill: true" por "fill: 'origin'"
 let distributionChart = new Chart(document.getElementById('distributionChart').getContext('2d'), {
     type: 'line',
-    data: { 
-        labels: nm, 
-        datasets: [{ 
-            label: 'Distribución', 
-            data: [], 
-            borderWidth: 1.5, 
-            pointRadius: 0, 
-            fill: 'origin', // Corrige la línea diagonal o cortes abruptos
-            borderColor: "black",
-            backgroundColor: function(context) { // Dibuja dinámicamente el gradiente sin importar cuándo sea visible
+    data: { labels: nm, datasets: [{ label: 'Distribución', data: [], borderWidth: 1.5, pointRadius: 0, fill: 'origin', borderColor: "black",
+            backgroundColor: function(context) { 
                 const chart = context.chart;
                 const {ctx, chartArea} = chart;
                 if (!chartArea) return null;
@@ -525,15 +540,7 @@ let distributionChart = new Chart(document.getElementById('distributionChart').g
             }
         }] 
     },
-    options: { 
-        responsive: true, 
-        maintainAspectRatio: false, 
-        plugins: { legend: {display: false} }, 
-        scales: { 
-            x: { type: 'linear', position: 'bottom', min: 340, max: 850, title: { display: true, text: 'Longitud de Onda (nm)' }, ticks: { stepSize: 50 } }, 
-            y: { display: false, min: 0 } 
-        } 
-    }
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display: false} }, scales: { x: { type: 'linear', position: 'bottom', min: 340, max: 850, title: { display: true, text: 'Longitud de Onda (nm)' }, ticks: { stepSize: 50 } }, y: { display: false, min: 0 } } }
 });
 
 // ==========================================
@@ -589,7 +596,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
+    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
     
     spectroChart.config.type = 'line'; 
     spectroChart.data.datasets[0].data = absorbanceData;
@@ -642,8 +649,6 @@ document.getElementById('btnColor').addEventListener('click', () => {
     chromaticityChart.data.datasets[1].label = `Muestra: ${currentSampleName}`;
     chromaticityChart.update();
 
-    // ⚠️ Ya no creamos el gradiente manual aquí, la propiedad "backgroundColor: function(context)" 
-    // en la configuración del distributionChart se encarga automáticamente.
     distributionChart.data.datasets[0].data = spectrumValsCoords;
     distributionChart.update(); 
 
