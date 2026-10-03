@@ -100,6 +100,7 @@ function XYZto_sRGB(X, Y, Z) {
     let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
     let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
     let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+
     let gamma = (c) => {
         let abs_c = Math.abs(c);
         let res = abs_c <= 0.0031308 ? 12.92 * abs_c : 1.055 * Math.pow(abs_c, 1 / 2.4) - 0.055;
@@ -147,7 +148,6 @@ let isMonitoring = false, monitorInterval;
 let currentData = new Array(288).fill(0), darkData = null, blankData = null, sampleData = null;
 let db = null; 
 
-// Variables para almacenar info de la muestra actual
 let currentSampleName = "Desconocida";
 let currentSampleDate = "--";
 let currentSampleClasificacion = "--"; 
@@ -160,14 +160,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
         window.SQL = SQL;
         
-        // Carga silenciosa y automática de la Base de Datos
         const response = await fetch("muestras_espectro.db");
         if (!response.ok) throw new Error("No se encontró la BD en el servidor.");
         
         const buffer = await response.arrayBuffer();
         db = new SQL.Database(new Uint8Array(buffer));
         
-        // BD Lista -> Habilitar Login
         document.getElementById('login-db-status').innerHTML = "✔️ BD Enlazada. Ingrese sus credenciales.";
         document.getElementById('login-db-status').style.color = "#2ecc71";
         document.getElementById('btnLogin').disabled = false;
@@ -181,7 +179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
-// LOGIC DE LOGIN SEGURO 
+// LÓGICA DE LOGIN SEGURO Y AUTO-CARGA DE REFERENCIAS
 document.getElementById('btnLogin').addEventListener('click', () => {
     const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
@@ -197,6 +195,10 @@ document.getElementById('btnLogin').addEventListener('click', () => {
             // Login Exitoso -> Mostrar App
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('appContainer').style.display = 'flex';
+
+            // AUTO-CARGAR EL PRIMER REGISTRO DE BLANCOS Y NEGROS
+            autoCargarReferencias();
+
         } else {
             errorMsg.innerText = "Usuario o contraseña incorrectos.";
         }
@@ -205,6 +207,44 @@ document.getElementById('btnLogin').addEventListener('click', () => {
         errorMsg.innerText = "Error consultando credenciales: " + e.message;
     }
 });
+
+// Función para cargar los primeros registros automáticamente al entrar
+function autoCargarReferencias() {
+    if (!db) return;
+    try {
+        // Cargar Blanco (Primer registro)
+        let resBlanco = db.exec("SELECT * FROM blancos ORDER BY ROWID ASC LIMIT 1");
+        if (resBlanco.length > 0) {
+            let columns = resBlanco[0].columns;
+            let values = resBlanco[0].values[0];
+            let arrBlanco = [];
+            for (let i = 1; i <= 288; i++) {
+                let colIndex = columns.indexOf(`s${i}`);
+                arrBlanco.push(colIndex !== -1 ? values[colIndex] : 0);
+            }
+            blankData = arrBlanco;
+            console.log("Primer Blanco auto-cargado exitosamente.");
+        }
+
+        // Cargar Negro (Primer registro)
+        let resNegro = db.exec("SELECT * FROM negros ORDER BY ROWID ASC LIMIT 1");
+        if (resNegro.length > 0) {
+            let columns = resNegro[0].columns;
+            let values = resNegro[0].values[0];
+            let arrNegro = [];
+            for (let i = 1; i <= 288; i++) {
+                let colIndex = columns.indexOf(`s${i}`);
+                arrNegro.push(colIndex !== -1 ? values[colIndex] : 0);
+            }
+            darkData = arrNegro;
+            console.log("Primer Negro auto-cargado exitosamente.");
+        }
+        
+        updateStatus(); // Refresca el panel de estado RAM
+    } catch (err) {
+        console.error("No se pudieron auto-cargar las referencias: ", err);
+    }
+}
 
 // Poblar los 3 selects
 function actualizarListasDesplegables() {
@@ -235,7 +275,7 @@ function llenarSelect(tabla, colNombre, selectId) {
     }
 }
 
-// Carga Dinámica 
+// Carga Dinámica manual (sin popups)
 function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
     if (!db) return;
     const seleccion = document.getElementById(selectId).value;
@@ -264,23 +304,22 @@ function cargarRegistroDesdeSelect(tabla, tipoDestino, selectId) {
             currentSampleName = pk.nombre;
             currentSampleDate = pk.fecha;
             
-            // Buscar si existe el campo "clasificacion"
             let colClasIndex = columns.indexOf('clasificacion');
             currentSampleClasificacion = colClasIndex !== -1 && values[colClasIndex] ? values[colClasIndex] : "Sin clasificación";
             
             isMonitoring = false; clearInterval(monitorInterval);
             setView('monitor');
             
-            document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
+            document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
             spectroChart.config.type = 'bar';
             spectroChart.data.datasets[0].data = sampleData;
             spectroChart.data.datasets[0].pointRadius = 0;
             spectroChart.update();
         }
+        updateStatus();
     }
 }
 
-// Escuchadores de Carga Independiente
 document.getElementById('btnLoadBlanco').addEventListener('click', () => cargarRegistroDesdeSelect('blancos', 'blanco', 'select-blancos'));
 document.getElementById('btnLoadNegro').addEventListener('click', () => cargarRegistroDesdeSelect('negros', 'negro', 'select-negros'));
 document.getElementById('btnLoadMuestra').addEventListener('click', () => cargarRegistroDesdeSelect('muestras', 'muestra', 'select-muestras'));
@@ -340,8 +379,10 @@ document.getElementById('btnSample').addEventListener('click', () => {
         
         currentSampleName = nombre;
         currentSampleDate = fechaStr;
-        document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
         
+        // Actualizar UI
+        document.getElementById('chartTitle').innerText = `Respuesta Espectral | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
+        updateStatus();
         actualizarListasDesplegables(); 
         exportarBD(); // Descarga invisible e inmediata
     } catch (e) {
@@ -349,6 +390,14 @@ document.getElementById('btnSample').addEventListener('click', () => {
     }
 });
 
+function updateStatus() {
+    document.getElementById('statusPanel').innerHTML = `
+        <strong>Estado de Memoria (RAM):</strong><br><br>
+        Blanco: ${blankData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Negro: ${darkData ? "✔️ Guardado" : "❌ Vacío"}<br>
+        Muestra: ${sampleData ? "✔️ Guardada" : "❌ Vacía"}
+    `;
+}
 
 // ==========================================
 // 5. CONFIGURACIÓN DE LOS GRÁFICOS
@@ -494,7 +543,7 @@ document.getElementById('btnStop').addEventListener('click', () => { isMonitorin
 
 // ABSORBANCIA 
 document.getElementById('btnAbsorbance').addEventListener('click', () => {
-    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
+    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra cargados."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('monitor');
     
     let absorbanceData = [];
@@ -516,7 +565,7 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
         pColors.push(isPeak ? 'red' : 'transparent');
     }
 
-    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
+    document.getElementById('chartTitle').innerText = `Absorbancia | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
     
     spectroChart.config.type = 'line'; 
     spectroChart.data.datasets[0].data = absorbanceData;
@@ -532,10 +581,14 @@ document.getElementById('btnAbsorbance').addEventListener('click', () => {
 
 // COLOR ESPECTRAL
 document.getElementById('btnColor').addEventListener('click', () => {
-    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra."); return; }
+    if (!blankData || !darkData || !sampleData) { alert("Requiere Negro, Blanco y Muestra cargados."); return; }
     isMonitoring = false; clearInterval(monitorInterval); setView('colorAnalysis');
 
-    document.getElementById('colorAnalysisTitle').innerText = `Análisis de Color | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate} | Clasificación: ${currentSampleClasificacion}`;
+    // Título Principal
+    document.getElementById('colorAnalysisTitle').innerText = `Análisis de Color | Muestra: ${currentSampleName} | Fecha: ${currentSampleDate}`;
+    
+    // Muestra la clasificación debajo del diagrama
+    document.getElementById('chromaClasificacion').innerText = `Clasificación: ${currentSampleClasificacion}`;
 
     let sum_X = 0, sum_Y = 0, sum_Z = 0, ref_Y = 0;
     let spectrumValsCoords = [];
@@ -564,6 +617,7 @@ document.getElementById('btnColor').addEventListener('click', () => {
 
     let srgb = XYZto_sRGB(X, Y, Z);
 
+    // Posicionar Muestra
     chromaticityChart.data.datasets[1].data = [coords];
     chromaticityChart.data.datasets[1].label = `Muestra: ${currentSampleName}`;
     chromaticityChart.update();
