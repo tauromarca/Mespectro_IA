@@ -153,6 +153,12 @@
             <button class="btn btn-blue" id="btnColor">Color Espectral</button>
             <button class="btn btn-danger" id="btnStop">Detener Monitor</button>
 
+            <div class="status" id="statusPanel">
+                <strong>Estado de Memoria (RAM):</strong><br><br>
+                Blanco: ❌ Vacío<br>
+                Negro: ❌ Vacío<br>
+                Muestra: ❌ Vacía
+            </div>
         </div>
 
         <div class="main-content">
@@ -175,6 +181,8 @@
                     <div class="canvas-container" id="chromaContainer">
                         <canvas id="chromaticityChart"></canvas>
                     </div>
+                    <!-- NUEVO: Contenedor para mostrar la clasificación debajo del diagrama -->
+                    <p id="chromaClasificacion" style="margin-top: 15px; font-weight: bold; color: #34495e; font-size: 15px; text-align: center;"></p>
                 </div>
                 
                 <div class="panel" id="panelDistribution">
